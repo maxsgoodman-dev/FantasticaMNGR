@@ -12,17 +12,20 @@ all behind a simple dashboard UI.
 
 ## Status
 
-Early scaffold. One live source adapter (FPL, via the public API), a
-historical FPL data + squad optimiser ported in from a prior "FPL Manager"
-project, and a placeholder dashboard UI — nothing is wired together yet.
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what's built vs.
+Three live source adapters (FPL, Sleeper, ESPN, all via their public APIs),
+a historical FPL data + squad optimiser ported in from a prior "FPL Manager"
+project, and a dashboard that renders live FPL player data with its nav
+grouped by sport (Premier League, NFL) — the first real wiring between a
+source adapter and the UI. No shared warehouse yet: the dashboard talks
+directly to FPL's API, not through `services/ingestion`. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what's built vs.
 planned.
 
 ## Repo structure
 
 ```
-apps/web/              Next.js (App Router) dashboard UI — placeholder shell today
-services/ingestion/    Python package of live source adapters (FPL bootstrap-static implemented)
+apps/web/              Next.js (App Router) dashboard — live FPL data, sport-grouped nav
+services/ingestion/    Python package of live source adapters (FPL, Sleeper, ESPN)
 services/fpl-planner/  Python package: historical FPL data + a squad/XI optimiser (PuLP)
 docs/ARCHITECTURE.md   Proposed pipeline: adapters → sync → warehouse → analytics → UI
 ```
