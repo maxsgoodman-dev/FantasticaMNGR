@@ -22,14 +22,29 @@ export default async function Home() {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-400">
           Leagues
         </h2>
-        <div className="rounded-md border border-slate-800 p-4 text-sm">
-          <div className="font-medium text-slate-200">Fantasy Premier League</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Live player data — no specific league connected yet.
+        <p className="mb-4 text-xs text-slate-500">
+          Grouped by sport — switch sport before picking a league within it.
+        </p>
+
+        <div className="mb-5">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-500">
+            Premier League
+          </h3>
+          <div className="rounded-md border border-slate-800 p-4 text-sm">
+            <div className="font-medium text-slate-200">Fantasy Premier League</div>
+            <div className="mt-1 text-xs text-slate-500">
+              Live player data — no specific league connected yet.
+            </div>
           </div>
         </div>
-        <div className="mt-3 rounded-md border border-dashed border-slate-800 p-4 text-sm text-slate-500">
-          ESPN, Sleeper, Yahoo — not connected yet.
+
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-500">
+            NFL
+          </h3>
+          <div className="rounded-md border border-dashed border-slate-800 p-4 text-sm text-slate-500">
+            ESPN, Sleeper, Yahoo — not connected yet.
+          </div>
         </div>
       </aside>
 
