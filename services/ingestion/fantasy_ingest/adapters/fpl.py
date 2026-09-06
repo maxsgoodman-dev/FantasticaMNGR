@@ -1,6 +1,7 @@
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
+from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, Team
 
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -46,6 +47,30 @@ def _normalize_players(raw_json: dict) -> list[Player]:
         )
         for element in raw_json["elements"]
     ]
+
+
+def _normalize_picks(
+    picks_json: dict,
+    live_points_by_id: dict[int, int],
+    names_by_id: dict[int, str],
+    team_external_id: str,
+    week: int,
+) -> list[RosterEntry]:
+    entries = []
+    for pick in picks_json["picks"]:
+        element_id = pick["element"]
+        base_points = live_points_by_id.get(element_id, 0)
+        entries.append(
+            RosterEntry(
+                team_external_id=team_external_id,
+                week=week,
+                player_external_id=str(element_id),
+                player_name=names_by_id.get(element_id, "Unknown"),
+                is_starter=pick["position"] <= 11,
+                points=float(base_points * pick["multiplier"]),
+            )
+        )
+    return entries
 
 
 class FPLAdapter(FantasySourceAdapter):
