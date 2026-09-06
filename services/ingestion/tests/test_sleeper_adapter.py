@@ -78,3 +78,94 @@ def test_normalize_players_drops_entries_without_team_or_position():
     players = _normalize_players(PLAYERS_FIXTURE)
 
     assert all(p.id != "9999" for p in players)
+
+
+from fantasy_ingest.adapters.sleeper import _normalize_league_teams, _normalize_week
+from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
+
+ROSTERS_FIXTURE = [
+    {"roster_id": 1, "owner_id": "u1", "metadata": {"team_name": "Dynasty Warriors"}},
+    {"roster_id": 2, "owner_id": "u2", "metadata": {}},
+]
+
+USERS_FIXTURE = [
+    {"user_id": "u1", "display_name": "MaxG"},
+    {"user_id": "u2", "display_name": "RivalPlayer"},
+]
+
+MATCHUPS_FIXTURE_WEEK_1 = [
+    {
+        "roster_id": 1,
+        "matchup_id": 100,
+        "points": 112.5,
+        "starters": ["4046"],
+        "players": ["4046", "6786"],
+        "players_points": {"4046": 24.0, "6786": 8.0},
+    },
+    {
+        "roster_id": 2,
+        "matchup_id": 100,
+        "points": 98.0,
+        "starters": ["9999"],
+        "players": ["9999"],
+        "players_points": {"9999": 15.0},
+    },
+]
+
+BYE_WEEK_FIXTURE = [
+    {
+        "roster_id": 3,
+        "matchup_id": None,
+        "points": 50.0,
+        "starters": [],
+        "players": [],
+        "players_points": {},
+    },
+]
+
+NAMES_BY_ID = {"4046": "Patrick Mahomes", "6786": "Justin Jefferson", "9999": "Old Retired Guy"}
+
+
+def test_normalize_league_teams():
+    teams = _normalize_league_teams(ROSTERS_FIXTURE, USERS_FIXTURE, my_user_id="u1")
+
+    assert teams == [
+        FantasyTeam(external_id="1", name="Dynasty Warriors", owner_name="MaxG", is_mine=True),
+        FantasyTeam(external_id="2", name="RivalPlayer", owner_name="RivalPlayer", is_mine=False),
+    ]
+
+
+def test_normalize_league_teams_falls_back_to_display_name_when_no_team_name():
+    teams = _normalize_league_teams(ROSTERS_FIXTURE, USERS_FIXTURE, my_user_id="u1")
+
+    assert teams[1].name == "RivalPlayer"
+
+
+def test_normalize_week_pairs_opponents_and_computes_scores():
+    scores, roster_entries = _normalize_week(MATCHUPS_FIXTURE_WEEK_1, week=1, names_by_id=NAMES_BY_ID)
+
+    assert WeeklyScore(team_external_id="1", week=1, points=112.5, opponent_external_id="2") in scores
+    assert WeeklyScore(team_external_id="2", week=1, points=98.0, opponent_external_id="1") in scores
+    assert RosterEntry(
+        team_external_id="1",
+        week=1,
+        player_external_id="4046",
+        player_name="Patrick Mahomes",
+        is_starter=True,
+        points=24.0,
+    ) in roster_entries
+    assert RosterEntry(
+        team_external_id="1",
+        week=1,
+        player_external_id="6786",
+        player_name="Justin Jefferson",
+        is_starter=False,
+        points=8.0,
+    ) in roster_entries
+
+
+def test_normalize_week_handles_bye_week_with_no_matchup_id():
+    scores, roster_entries = _normalize_week(BYE_WEEK_FIXTURE, week=1, names_by_id=NAMES_BY_ID)
+
+    assert scores == [WeeklyScore(team_external_id="3", week=1, points=50.0, opponent_external_id=None)]
+    assert roster_entries == []

@@ -1,6 +1,7 @@
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
+from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, Team
 
 PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
@@ -73,6 +74,69 @@ def _normalize_players(raw_json: dict) -> list[Player]:
             )
         )
     return players
+
+
+def _normalize_league_teams(rosters_json: list[dict], users_json: list[dict], my_user_id: str) -> list[FantasyTeam]:
+    users_by_id = {user["user_id"]: user for user in users_json}
+    teams = []
+    for roster in rosters_json:
+        owner_id = roster.get("owner_id")
+        user = users_by_id.get(owner_id, {})
+        display_name = user.get("display_name", "Unknown")
+        team_name = (roster.get("metadata") or {}).get("team_name") or display_name
+        teams.append(
+            FantasyTeam(
+                external_id=str(roster["roster_id"]),
+                name=team_name,
+                owner_name=display_name,
+                is_mine=(owner_id == my_user_id),
+            )
+        )
+    return teams
+
+
+def _normalize_week(
+    matchups_json: list[dict], week: int, names_by_id: dict[str, str]
+) -> tuple[list[WeeklyScore], list[RosterEntry]]:
+    # Sleeper groups two opposing rosters under a shared matchup_id; a
+    # team on bye that week has matchup_id: null and no opponent.
+    grouped: dict[int, list[dict]] = {}
+    solo: list[dict] = []
+    for entry in matchups_json:
+        matchup_id = entry.get("matchup_id")
+        if matchup_id is None:
+            solo.append(entry)
+        else:
+            grouped.setdefault(matchup_id, []).append(entry)
+
+    scores: list[WeeklyScore] = []
+    roster_entries: list[RosterEntry] = []
+    for group in list(grouped.values()) + [[entry] for entry in solo]:
+        for entry in group:
+            opponent = next((other for other in group if other is not entry), None)
+            roster_id = str(entry["roster_id"])
+            scores.append(
+                WeeklyScore(
+                    team_external_id=roster_id,
+                    week=week,
+                    points=float(entry.get("points") or 0.0),
+                    opponent_external_id=str(opponent["roster_id"]) if opponent else None,
+                )
+            )
+            starters = set(entry.get("starters") or [])
+            players_points = entry.get("players_points") or {}
+            for player_id in entry.get("players") or []:
+                roster_entries.append(
+                    RosterEntry(
+                        team_external_id=roster_id,
+                        week=week,
+                        player_external_id=str(player_id),
+                        player_name=names_by_id.get(str(player_id), "Unknown"),
+                        is_starter=player_id in starters,
+                        points=float(players_points.get(player_id, 0.0)),
+                    )
+                )
+    return scores, roster_entries
 
 
 class SleeperAdapter(FantasySourceAdapter):
