@@ -85,12 +85,27 @@ def sync_adapter(adapter: FantasySourceAdapter, client: httpx.Client | None = No
     return {"teams": len(team_rows), "players": len(player_rows)}
 
 
-def sync_all(adapters: list[FantasySourceAdapter]) -> dict[str, dict[str, int]]:
-    client = _client()
+def sync_all(adapters: list[FantasySourceAdapter], client: httpx.Client | None = None) -> dict[str, dict]:
+    """Sync every adapter, one failure at a time.
+
+    One adapter's data being temporarily broken (a bad endpoint, a
+    format change) shouldn't stop the others from syncing — each result
+    is either the normal `{"teams": N, "players": N}` count dict or
+    `{"error": "..."}` if that adapter raised.
+    """
+    owns_client = client is None
+    client = client or _client()
+    results: dict[str, dict] = {}
     try:
-        return {adapter.source: sync_adapter(adapter, client=client) for adapter in adapters}
+        for adapter in adapters:
+            try:
+                results[adapter.source] = sync_adapter(adapter, client=client)
+            except Exception as error:  # noqa: BLE001 - deliberately broad, see docstring
+                results[adapter.source] = {"error": str(error)}
     finally:
-        client.close()
+        if owns_client:
+            client.close()
+    return results
 
 
 def main() -> None:
@@ -99,8 +114,11 @@ def main() -> None:
     from fantasy_ingest.adapters.sleeper import SleeperAdapter
 
     results = sync_all([FPLAdapter(), SleeperAdapter(), ESPNAdapter()])
-    for source, counts in results.items():
-        print(f"{source}: {counts['teams']} teams, {counts['players']} players")
+    for source, result in results.items():
+        if "error" in result:
+            print(f"{source}: FAILED — {result['error']}")
+        else:
+            print(f"{source}: {result['teams']} teams, {result['players']} players")
 
 
 if __name__ == "__main__":
