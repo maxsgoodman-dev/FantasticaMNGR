@@ -12,22 +12,22 @@ all behind a simple dashboard UI.
 
 ## Status
 
-Three live source adapters (FPL, Sleeper, ESPN, all via their public APIs),
-a historical FPL data + squad optimiser ported in from a prior "FPL Manager"
-project, and a dashboard that renders live FPL player data with its nav
-grouped by sport (Premier League, NFL) — the first real wiring between a
-source adapter and the UI. No shared warehouse yet: the dashboard talks
-directly to FPL's API, not through `services/ingestion`. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what's built vs.
-planned.
+Three live source adapters (FPL, Sleeper, ESPN), a Supabase/Postgres
+warehouse they sync into, and a dashboard that reads from that warehouse
+— grouped by sport (Premier League, NFL) — instead of calling any
+platform's API directly. The warehouse currently holds hand-seeded data,
+not a live sync result (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+stage 3 for why); a scheduler to run syncs automatically and a real
+analytics/mart layer beyond raw rows are still open. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full picture.
 
 ## Repo structure
 
 ```
-apps/web/              Next.js (App Router) dashboard — live FPL data, sport-grouped nav
-services/ingestion/    Python package of live source adapters (FPL, Sleeper, ESPN)
+apps/web/              Next.js (App Router) dashboard — reads from the warehouse, sport-grouped nav
+services/ingestion/    Python package: live source adapters (FPL, Sleeper, ESPN) + the warehouse sync
 services/fpl-planner/  Python package: historical FPL data + a squad/XI optimiser (PuLP)
-docs/ARCHITECTURE.md   Proposed pipeline: adapters → sync → warehouse → analytics → UI
+docs/ARCHITECTURE.md   Pipeline: adapters → sync → warehouse → analytics → UI
 ```
 
 ## Setup
@@ -36,12 +36,13 @@ docs/ARCHITECTURE.md   Proposed pipeline: adapters → sync → warehouse → an
 
 ```bash
 cd apps/web
+cp .env.example .env.local   # fill in your Supabase project URL + anon key
 npm install
 npm run dev      # http://localhost:3000
 npm run build    # production build
 ```
 
-### services/ingestion (Python live adapters)
+### services/ingestion (Python live adapters + warehouse sync)
 
 ```bash
 cd services/ingestion
@@ -49,6 +50,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e . pytest
 pytest
+
+# to sync live data into the warehouse (needs SUPABASE_URL and
+# SUPABASE_SERVICE_ROLE_KEY set — see .env.example):
+python -m fantasy_ingest.warehouse
 ```
 
 ### services/fpl-planner (Python historical data + optimiser)
