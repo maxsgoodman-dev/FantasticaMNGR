@@ -43,6 +43,7 @@ def _normalize_players(raw_json: dict) -> list[Player]:
 
 class FPLAdapter(FantasySourceAdapter):
     source = "fpl"
+    sport = "premier-league"
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client or httpx.Client()
