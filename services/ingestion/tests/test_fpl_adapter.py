@@ -1,4 +1,4 @@
-from fantasy_ingest.adapters.fpl import _normalize_players, _normalize_teams
+from fantasy_ingest.adapters.fpl import FPLAdapter, _normalize_players, _normalize_teams
 from fantasy_ingest.models import Player, Team
 
 BOOTSTRAP_STATIC_FIXTURE = {
@@ -39,6 +39,10 @@ BOOTSTRAP_STATIC_FIXTURE = {
         },
     ],
 }
+
+
+def test_adapter_declares_sport():
+    assert FPLAdapter.sport == "premier-league"
 
 
 def test_normalize_teams():

@@ -61,6 +61,14 @@ an empty "Leagues" nav and a "coming soon" main panel — with no data wired
 up. It will eventually read from the mart layer via an API layer (not yet
 designed).
 
+**Sport is a first-class dimension, not just league.** The nav switches
+between sports (currently NFL and Premier League; both are the two
+`sport` values `FantasySourceAdapter` subclasses declare — see stage 1)
+before drilling into that sport's leagues/platforms — not one flat list
+mixing an ESPN NFL league with an FPL Premier League squad. NFL groups
+ESPN/Sleeper/Yahoo; Premier League currently only has FPL, with room for
+other soccer leagues later without renaming this dimension.
+
 ## FPL Manager port-over — **done for data + analysis, adapter integration still open**
 
 Max had a prior "FPL Manager" Claude Project (not a git repo, data +
