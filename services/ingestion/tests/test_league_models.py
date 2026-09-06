@@ -49,3 +49,10 @@ def test_league_sync_result_bundles_the_three_lists():
     assert result.teams == [team]
     assert result.weekly_scores == [score]
     assert result.roster_players == [entry]
+
+
+def test_league_sync_result_defaults_to_empty_lists():
+    result = LeagueSyncResult()
+    assert result.teams == []
+    assert result.weekly_scores == []
+    assert result.roster_players == []
