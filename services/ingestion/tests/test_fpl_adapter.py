@@ -1,4 +1,11 @@
-from fantasy_ingest.adapters.fpl import FPLAdapter, _normalize_players, _normalize_teams
+import pytest
+
+from fantasy_ingest.adapters.fpl import (
+    FPLAdapter,
+    _current_gameweek,
+    _normalize_players,
+    _normalize_teams,
+)
 from fantasy_ingest.models import Player, Team
 
 BOOTSTRAP_STATIC_FIXTURE = {
@@ -39,6 +46,13 @@ BOOTSTRAP_STATIC_FIXTURE = {
         },
     ],
 }
+
+EVENTS_FIXTURE = [
+    {"id": 1, "is_current": False, "finished": True},
+    {"id": 2, "is_current": False, "finished": True},
+    {"id": 3, "is_current": True, "finished": False},
+    {"id": 4, "is_current": False, "finished": False},
+]
 
 
 def test_adapter_declares_sport():
@@ -86,3 +100,12 @@ def test_normalize_players():
             form=7.2,
         ),
     ]
+
+
+def test_current_gameweek_is_the_in_progress_or_latest_finished_week():
+    assert _current_gameweek({"events": EVENTS_FIXTURE}) == 3
+
+
+def test_current_gameweek_raises_when_season_has_not_started():
+    with pytest.raises(ValueError, match="no finished or current gameweek"):
+        _current_gameweek({"events": [{"id": 1, "is_current": False, "finished": False}]})

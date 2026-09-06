@@ -13,6 +13,13 @@ _ELEMENT_TYPE_TO_POSITION = {
 }
 
 
+def _current_gameweek(bootstrap: dict) -> int:
+    candidate_ids = [event["id"] for event in bootstrap["events"] if event.get("is_current") or event.get("finished")]
+    if not candidate_ids:
+        raise ValueError("no finished or current gameweek found in bootstrap-static events")
+    return max(candidate_ids)
+
+
 def _normalize_teams(raw_json: dict) -> list[Team]:
     return [
         Team(
