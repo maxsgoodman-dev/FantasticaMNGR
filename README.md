@@ -12,16 +12,19 @@ all behind a simple dashboard UI.
 
 ## Status
 
-Early scaffold. One working source adapter (FPL) and a placeholder dashboard
-UI — nothing is wired together yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-for what's built vs. planned.
+Early scaffold. One live source adapter (FPL, via the public API), a
+historical FPL data + squad optimiser ported in from a prior "FPL Manager"
+project, and a placeholder dashboard UI — nothing is wired together yet.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what's built vs.
+planned.
 
 ## Repo structure
 
 ```
-apps/web/            Next.js (App Router) dashboard UI — placeholder shell today
-services/ingestion/   Python package of source adapters (FPL implemented)
-docs/ARCHITECTURE.md  Proposed pipeline: adapters → sync → warehouse → analytics → UI
+apps/web/              Next.js (App Router) dashboard UI — placeholder shell today
+services/ingestion/    Python package of live source adapters (FPL bootstrap-static implemented)
+services/fpl-planner/  Python package: historical FPL data + a squad/XI optimiser (PuLP)
+docs/ARCHITECTURE.md   Proposed pipeline: adapters → sync → warehouse → analytics → UI
 ```
 
 ## Setup
@@ -35,7 +38,7 @@ npm run dev      # http://localhost:3000
 npm run build    # production build
 ```
 
-### services/ingestion (Python adapters)
+### services/ingestion (Python live adapters)
 
 ```bash
 cd services/ingestion
@@ -44,6 +47,20 @@ source .venv/bin/activate
 pip install -e . pytest
 pytest
 ```
+
+### services/fpl-planner (Python historical data + optimiser)
+
+```bash
+cd services/fpl-planner
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e . pytest
+pytest
+python -m fpl_planner.optimise --use-defaults
+```
+
+See [`services/fpl-planner/README.md`](services/fpl-planner/README.md) and
+its `docs/` for data provenance and the optimiser's methodology/known gaps.
 
 ## Reference projects
 
@@ -54,7 +71,9 @@ pytest
 - [anrg-bot/nfl-fantasy-data-pipeline](https://github.com/anrg-bot/nfl-fantasy-data-pipeline) —
   nfl_data_py → Snowflake → dbt → Power BI pipeline. Useful mart-level metric
   ideas: consistency score, red zone efficiency, ROI vs. salary.
-- Max also has an existing "FPL Manager" Claude Project (not a git repo)
-  whose structure/analysis approach he wants ported into this tool's FPL
-  adapter eventually. Noted as a future step — nothing has been pulled from
-  it yet.
+- Max's prior "FPL Manager" Claude Project (not a git repo) has been
+  ported into `services/fpl-planner`: its 30 CSVs of historical FPL data
+  and 3 markdown docs were ingested (docs reconstructed from the ingestion
+  brief — see `services/fpl-planner/docs/` for provenance notes), and its
+  squad optimiser was rebuilt from spec (the original was never saved as
+  a file — see `services/fpl-planner/docs/analysis-2026-27-optimal-starting-squad.md`).

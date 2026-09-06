@@ -36,7 +36,7 @@ A Postgres database holding normalized players, teams, matchups, and
 historical snapshots across all connected leagues and platforms, so
 analytics can run across sources instead of per-adapter. Not stood up yet.
 
-## 4. Analytics / mart layer — **planned**
+## 4. Analytics / mart layer — **planned** (one piece built standalone)
 
 Derived metrics computed from the warehouse, e.g.:
 
@@ -46,6 +46,14 @@ Derived metrics computed from the warehouse, e.g.:
 - Trade value and player-vs-player comparisons
 - Team strength/weakness breakdowns, automated trade-opportunity detection
 
+`services/fpl-planner` is a first, standalone piece of this layer for FPL
+specifically: historical player data (2016-17 → 2026-27, two sources) plus
+a squad/starting-XI optimiser (linear programming via PuLP). It is not yet
+wired to a warehouse — it loads its own CSVs in-process, the same
+placeholder-architecture pattern `services/ingestion` uses. See
+`services/fpl-planner/docs/` for data provenance and the optimiser's
+methodology/known gaps (notably: no fixture-difficulty term yet).
+
 ## 5. Dashboard UI — **placeholder built**
 
 `apps/web` is a Next.js (App Router) app. Today it renders a static shell —
@@ -53,12 +61,22 @@ an empty "Leagues" nav and a "coming soon" main panel — with no data wired
 up. It will eventually read from the mart layer via an API layer (not yet
 designed).
 
-## Future: FPL Manager port-over
+## FPL Manager port-over — **done for data + analysis, adapter integration still open**
 
-Max has a prior "FPL Manager" Claude Project (not a git repo) with an
-existing structure/analysis approach for FPL specifically. Porting its
-approach into `adapters/fpl.py` and the eventual FPL mart logic is a planned
-future step — nothing has been pulled from it yet.
+Max had a prior "FPL Manager" Claude Project (not a git repo, data +
+markdown docs only, no code) with an existing structure/analysis approach
+for FPL specifically. Its 30 CSVs and 3 markdown docs have been ported
+into `services/fpl-planner` (docs reconstructed from a written ingestion
+brief, since the originals were only reachable from that Claude Project's
+own knowledge base — see `services/fpl-planner/docs/` for the provenance
+note on each). Its squad optimiser — never saved as a file, only run as
+inline heredocs in a chat session — has been rebuilt from a spec written
+down at the same time, at `services/fpl-planner/fpl_planner/optimise.py`.
+
+Still open: `services/fpl-planner` is a separate package from
+`services/ingestion`'s live `adapters/fpl.py` — merging the two into one
+FPL adapter (live current-season data + this historical archive +
+optimiser) is future work, not done here.
 
 ## Reference projects
 
