@@ -3,7 +3,7 @@ import pytest
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.models import Player, Team
-from fantasy_ingest.warehouse import sync_adapter
+from fantasy_ingest.warehouse import sync_adapter, sync_all
 
 
 class FakeAdapter(FantasySourceAdapter):
@@ -84,3 +84,22 @@ def test_sync_adapter_skips_empty_post_when_no_rows(recorded_requests):
 
     assert counts == {"teams": 0, "players": 0}
     assert recorded_requests == []
+
+
+class BrokenAdapter(FakeAdapter):
+    source = "brokensource"
+
+    def fetch_teams(self):
+        raise RuntimeError("upstream is down")
+
+
+def test_sync_all_isolates_one_adapters_failure_from_the_rest(recorded_requests):
+    # Confirmed live (2026-09-06): ESPN's /teams list includes team ids
+    # that 404 on /roster (team 22 specifically) — one adapter failing
+    # partway through must not stop the others from syncing.
+    client = make_client(recorded_requests)
+
+    results = sync_all([FakeAdapter(), BrokenAdapter()], client=client)
+
+    assert results["testsource"] == {"teams": 1, "players": 1}
+    assert "upstream is down" in results["brokensource"]["error"]

@@ -7,16 +7,25 @@ not viable for ~2000+ players), so this adapter instead fetches the
 32-team list and then each team's roster, which does embed full player
 detail per ESPN's site API convention.
 
-IMPORTANT — response shape is unverified against a live call: this
-sandbox's egress proxy blocks site.api.espn.com (same restriction that
-blocks Sleeper's api.sleeper.app), so the endpoint URLs and field names
-below come from cross-referencing public documentation (the
-nntrn/ee26cb2a0716de0947a0a4e9a157bc1c gist, pseudo-r/Public-ESPN-API)
-rather than a captured real response. Normalization is written
-defensively (skip malformed entries, don't crash) for exactly this
-reason. Verify field names against a real response before relying on
-this in production.
+Confirmed live (2026-09-06, from outside the dev sandbox that blocks
+site.api.espn.com): the endpoint pattern is correct — GET .../teams
+returns the 32-team list, and GET .../teams/{id}/roster returns 200 for
+most ids. One real, ESPN-side gotcha found by that same run: `/teams`
+lists team id "22", but its `/roster` 404s while other ids (e.g. "1")
+return 200 — not a bug in this adapter's URL pattern, just an
+inconsistency on ESPN's side. `fetch_players()` treats a single team's
+roster 404 as skippable, not fatal, for exactly this reason.
+
+Still unverified: the exact response *body* shape for a successful
+roster call (grouped-by-position-category vs. a flat athlete list) was
+inferred from public documentation (the nntrn/ee26cb2a0716de0947a0a4e9a157bc1c
+gist, pseudo-r/Public-ESPN-API), not confirmed against a captured
+payload — `_normalize_roster` handles both shapes defensively for this
+reason. If real players are silently missing from a sync, check this
+first.
 """
+
+import sys
 
 import httpx
 
@@ -103,7 +112,17 @@ class ESPNAdapter(FantasySourceAdapter):
         players = []
         for team in self.fetch_teams():
             response = self._client.get(ROSTER_URL.format(team_id=team.id))
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                # One team's roster failing (confirmed live: some team IDs
+                # from /teams 404 on /roster) shouldn't lose every other
+                # team's data — skip it and keep going.
+                print(
+                    f"espn: skipping team {team.id} ({team.short_name}) roster: {error}",
+                    file=sys.stderr,
+                )
+                continue
             players.extend(_normalize_roster(response.json(), team.short_name))
         return players
 

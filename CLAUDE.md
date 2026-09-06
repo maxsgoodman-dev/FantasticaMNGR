@@ -80,9 +80,17 @@ gotchas worth knowing before touching them: FPL's `now_cost` is tenths of
 a £m while fpl-core's own `now_cost` (in `services/fpl-planner`) is
 already in £m; Sleeper/ESPN have no per-player salary or points endpoint
 usable without a league ID, so `price`/`total_points`/`form` are left at
-`0` rather than faked; ESPN's roster response shape is documented from
-public references, not a captured live response (see `espn.py`'s module
-docstring) — verify before trusting it in production.
+`0` rather than faked; ESPN's `/teams` list includes at least one team
+id whose `/roster` 404s while others return 200 (confirmed live,
+2026-09-06 — an ESPN-side inconsistency, not a URL bug), which is why
+`fetch_players()` skips a team whose roster call fails instead of
+aborting the whole fetch. The exact roster response body shape is still
+inferred from public docs, not a captured payload — see `espn.py`'s
+module docstring before trusting it further.
+
+Both `sync_all` (warehouse.py) and `fetch_players` (espn.py) follow the
+same rule as a result: one team/adapter failing partway through must
+never lose the data that already succeeded around it.
 
 ### Network egress is restricted in this sandbox — including to our own Supabase project
 
@@ -115,11 +123,15 @@ httpx (`on_conflict` + `Prefer: resolution=merge-duplicates` — no
 `@supabase/supabase-js` with the anon/publishable key (`lib/supabase.ts`,
 `lib/players.ts`) — never the service role key, which stays server-side.
 
-**The tables currently hold hand-seeded data (inserted via the Supabase
-MCP tools), not a live sync result** — see the network-egress note above
-for why `sync_all` has never actually run against live upstream data from
-inside this environment. Don't assume the warehouse's current contents
-reflect anything beyond the adapters' own test fixtures.
+**A real sync has run** (2026-09-06, from the repo owner's own machine —
+see the network-egress note above for why it can't be run from this
+sandbox): FPL and Sleeper both hold live data now. `sync_all` isolates
+one adapter's failure from the rest specifically because of what that
+first live run found (ESPN's `/teams`-vs-`/roster` inconsistency above)
+— don't assume every table's contents are still the original
+hand-seeded fixture values, but don't assume every source has been
+successfully synced live either; check `updated_at` per row if it
+matters for what you're doing.
 
 There's no scheduler yet — running a sync means invoking
 `python -m fantasy_ingest.warehouse` by hand (or wiring it into a cron

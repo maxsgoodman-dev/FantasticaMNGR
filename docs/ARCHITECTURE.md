@@ -35,12 +35,15 @@ Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
 - **ESPN (`adapters/espn.py`, sport `nfl`)** — fetches the public site-API
   `/teams` list, then each team's `/roster` (32 calls total; ESPN's core
   API `/athletes` list is paginated `$ref` links, one HTTP call per
-  player, not viable for a full-league pull). **Response shape unverified
-  against a live call** — this sandbox's egress proxy blocks
-  `site.api.espn.com`, so the endpoint URLs and fields come from
-  cross-referenced public documentation, not a captured response.
-  Normalization is written defensively (skip malformed entries, don't
-  crash) for exactly this reason — see the module docstring.
+  player, not viable for a full-league pull). The endpoint pattern is
+  now confirmed live (2026-09-06, run from outside the dev sandbox that
+  blocks `site.api.espn.com`) — with one real gotcha it also surfaced:
+  ESPN's own `/teams` list includes a team id whose `/roster` 404s while
+  others return 200 (not a bug in this adapter's URL, an ESPN-side
+  inconsistency). `fetch_players()` skips a team whose roster call fails
+  rather than aborting the whole fetch, for exactly this reason. The
+  exact roster response *body* shape is still inferred from public docs,
+  not a captured payload — see the module docstring.
   `price`/`total_points`/`form` are left at 0, same reasoning as Sleeper's.
 
 Not yet implemented: Yahoo adapter; FPL, Sleeper, and ESPN head-to-head
@@ -70,21 +73,21 @@ bound to this), and only the service role key — held server-side by
 teams and players and upserts them via Supabase's PostgREST API
 (`on_conflict` + `Prefer: resolution=merge-duplicates`) — direct httpx
 calls, no `supabase-py` dependency, consistent with the rest of this
-package. `sync_all([...])` runs every adapter through one shared client.
-Tested with `httpx.MockTransport` (no live network call, same pattern as
-the adapters' own fixture-based tests).
+package. `sync_all([...])` runs every adapter through one shared client,
+and isolates each adapter's failure from the others (one adapter raising
+mid-run — confirmed live with ESPN, see stage 1 — no longer stops the
+adapters after it from syncing). Tested with `httpx.MockTransport` (no
+live network call, same pattern as the adapters' own fixture-based
+tests).
 
-**The warehouse currently holds hand-seeded data, not a live sync
-result** — this sandbox's egress proxy blocks the Supabase project's own
-host the same way it blocks the three platforms' APIs (confirmed via
-direct `curl` and via `apps/web`'s build/dev-server graceful-failure
-path — see stage 5), so `sync_all` has never actually been run against
-live upstream data from inside this environment. What's in the tables
-now was inserted by hand (via the Supabase SQL editor/MCP tools) using
-the same values as the adapters' own test fixtures, specifically to
-prove the warehouse → dashboard read path works. Running a real sync
-needs to happen from an environment that can reach both the three
-platform APIs and Supabase — a normal deployment, not this sandbox.
+**A real sync has run** (2026-09-06, from the repo owner's own machine —
+this sandbox's egress proxy still blocks both the three platforms' APIs
+and Supabase's own host, confirmed via direct `curl`, so it can't be run
+from in here): FPL and Sleeper both synced live data (654 and 2,711
+players respectively at last check); ESPN failed that first run on the
+`/teams` id 404 described in stage 1, fixed since. The remaining
+`teams` rows for ESPN are still the original hand-seeded fixture values
+pending a re-run.
 
 ## 4. Analytics / mart layer — **planned** (one piece built standalone)
 
