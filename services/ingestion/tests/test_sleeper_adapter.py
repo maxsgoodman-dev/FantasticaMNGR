@@ -1,9 +1,12 @@
 from fantasy_ingest.adapters.sleeper import (
     NFL_TEAMS,
     SleeperAdapter,
+    _normalize_league_teams,
     _normalize_players,
     _normalize_teams,
+    _normalize_week,
 )
+from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, Team
 
 PLAYERS_FIXTURE = {
@@ -79,9 +82,6 @@ def test_normalize_players_drops_entries_without_team_or_position():
 
     assert all(p.id != "9999" for p in players)
 
-
-from fantasy_ingest.adapters.sleeper import _normalize_league_teams, _normalize_week
-from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
 
 ROSTERS_FIXTURE = [
     {"roster_id": 1, "owner_id": "u1", "metadata": {"team_name": "Dynasty Warriors"}},
