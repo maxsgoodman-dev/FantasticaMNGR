@@ -2,10 +2,11 @@
 
 Fantasy Analytics Dashboard pulls data from multiple, unaffiliated fantasy
 sports platforms and turns it into cross-league analytics behind a single
-dashboard. The pipeline is designed in five stages. Stage 1 (source
-adapters) is built for three platforms; stage 5 (dashboard UI) has one
-direct, unaudited path from FPL's adapter logic straight to the page,
-bypassing the still-unbuilt stages 2-4 in between.
+dashboard. The pipeline is designed in five stages. Stages 1 and 3 are
+built (three source adapters, a Postgres warehouse); stage 5 now reads
+from that warehouse instead of one platform's API directly. Stage 2
+(scheduling) and stage 4 (a real analytics/mart layer beyond raw rows)
+are still open.
 
 ## 1. Source adapters — **built** (FPL, Sleeper, ESPN)
 
@@ -50,14 +51,40 @@ additionally need `espn_s2`/`SWID` auth cookies) not available yet.
 
 A scheduler that polls each connected source on an interval, tightening the
 interval during live games (e.g. Sunday NFL windows, active PL matchdays) and
-backing off between them. Not built yet — `services/ingestion` currently only
-exposes adapters that fetch and normalize in-process, invoked on demand.
+backing off between them. Not built yet. `fantasy_ingest.warehouse.sync_all`
+(stage 3) does the actual fetch-and-upsert work already — running it on a
+schedule is the remaining piece, not a rewrite. Right now it's invoked
+manually (`python -m fantasy_ingest.warehouse`).
 
-## 3. Shared warehouse — **planned**
+## 3. Shared warehouse — **built** (Supabase/Postgres)
 
-A Postgres database holding normalized players, teams, matchups, and
-historical snapshots across all connected leagues and platforms, so
-analytics can run across sources instead of per-adapter. Not stood up yet.
+A Supabase Postgres project (`fantasticamngr`) with `sports`, `sources`,
+`teams`, and `players` tables — `players`/`teams` both carry `source_id`
++ `sport_id` and a `unique(source_id, external_id)` constraint, so a
+sync is always an upsert, never a duplicate. Row-level security is
+enabled on every table: anyone can `SELECT` (the dashboard's anon key is
+bound to this), and only the service role key — held server-side by
+`services/ingestion`, never shipped to `apps/web` — can write.
+
+`fantasy_ingest.warehouse.sync_adapter(adapter)` fetches one adapter's
+teams and players and upserts them via Supabase's PostgREST API
+(`on_conflict` + `Prefer: resolution=merge-duplicates`) — direct httpx
+calls, no `supabase-py` dependency, consistent with the rest of this
+package. `sync_all([...])` runs every adapter through one shared client.
+Tested with `httpx.MockTransport` (no live network call, same pattern as
+the adapters' own fixture-based tests).
+
+**The warehouse currently holds hand-seeded data, not a live sync
+result** — this sandbox's egress proxy blocks the Supabase project's own
+host the same way it blocks the three platforms' APIs (confirmed via
+direct `curl` and via `apps/web`'s build/dev-server graceful-failure
+path — see stage 5), so `sync_all` has never actually been run against
+live upstream data from inside this environment. What's in the tables
+now was inserted by hand (via the Supabase SQL editor/MCP tools) using
+the same values as the adapters' own test fixtures, specifically to
+prove the warehouse → dashboard read path works. Running a real sync
+needs to happen from an environment that can reach both the three
+platform APIs and Supabase — a normal deployment, not this sandbox.
 
 ## 4. Analytics / mart layer — **planned** (one piece built standalone)
 
@@ -71,25 +98,32 @@ Derived metrics computed from the warehouse, e.g.:
 
 `services/fpl-planner` is a first, standalone piece of this layer for FPL
 specifically: historical player data (2016-17 → 2026-27, two sources) plus
-a squad/starting-XI optimiser (linear programming via PuLP). It is not yet
-wired to a warehouse — it loads its own CSVs in-process, the same
-placeholder-architecture pattern `services/ingestion` uses. See
+a squad/starting-XI optimiser (linear programming via PuLP). It still
+loads its own CSVs in-process rather than reading from the warehouse
+(stage 3) — that CSV archive is FPL-only and season-by-season, a
+different shape from the warehouse's current-snapshot `players` table,
+so merging them is real design work, not a rename. See
 `services/fpl-planner/docs/` for data provenance and the optimiser's
 methodology/known gaps (notably: no fixture-difficulty term yet).
 
-## 5. Dashboard UI — **first live data wired** (FPL only)
+## 5. Dashboard UI — **reads from the warehouse** (both sports)
 
-`apps/web` is a Next.js (App Router) app. It now renders live FPL player
-data (`lib/fpl.ts` fetches and normalizes FPL's `bootstrap-static`
-directly — a hand-synced TypeScript port of `adapters/fpl.py`'s logic,
-since this app doesn't share a runtime with `services/ingestion`) behind
-an API route (`/api/fpl/players`) and a top-10-by-points table on the
-homepage. This bypasses stages 2-4 entirely — there's still no scheduler,
-warehouse, or mart layer, so this is a direct source-to-UI read, not the
-eventual architecture. Sleeper and ESPN are listed in the nav but not
-wired to real data yet. The eventual design still reads from the mart
-layer via an API layer (not yet designed) rather than an app-level fetch
-straight to one platform's API.
+`apps/web` is a Next.js (App Router) app. It queries the Supabase
+warehouse directly with the `@supabase/supabase-js` client
+(`lib/supabase.ts`, `lib/players.ts`) using the anon/publishable key —
+RLS restricts that key to `SELECT`, so this is safe to ship to the
+browser. The homepage renders a top-10-by-points table per sport
+(Premier League, NFL) behind `/api/players?sport=<id>`. This replaces
+the earlier direct-to-FPL-API prototype entirely — there's no more
+`lib/fpl.ts` or FPL-specific fetch in this app; all platform-specific
+logic now lives in `services/ingestion`'s adapters, and `apps/web` only
+ever talks to the warehouse. This still isn't the final design (no mart
+layer/API layer sits between the warehouse and this app yet — it's a
+direct table read), but it's a real database in the loop instead of a
+hand-synced port of one platform's parsing logic.
+
+Both fetch paths degrade gracefully on failure, same as before: the page
+shows an inline per-section error, the API route returns `502`.
 
 **Sport is a first-class dimension, not just league.** The nav switches
 between sports (currently NFL and Premier League; both are the two

@@ -42,6 +42,10 @@ pip install -e . pytest
 pytest                                              # all tests
 pytest tests/test_fpl_adapter.py -v                 # one adapter
 pytest tests/test_fpl_adapter.py::test_normalize_players -v  # one test
+
+# sync all adapters into the warehouse — needs SUPABASE_URL and
+# SUPABASE_SERVICE_ROLE_KEY in the environment (see .env.example)
+python -m fantasy_ingest.warehouse
 ```
 
 ### services/fpl-planner
@@ -80,37 +84,46 @@ usable without a league ID, so `price`/`total_points`/`form` are left at
 public references, not a captured live response (see `espn.py`'s module
 docstring) — verify before trusting it in production.
 
-### Network egress is restricted in this sandbox
+### Network egress is restricted in this sandbox — including to our own Supabase project
 
-`fantasy.premierleague.com`, `api.sleeper.app`, and `site.api.espn.com`
-are all blocked by this environment's egress proxy (confirmed via direct
-`curl`/build attempts — 403 at the proxy, not the upstream API). This is
-why every adapter's tests use hand-written fixtures instead of live
-calls, and why `apps/web`'s live FPL fetch (`lib/fpl.ts`) has an explicit
-graceful-failure path (`page.tsx` shows an inline error, the API route
-returns `502`) rather than assuming the fetch succeeds. Don't spend time
-trying to `curl` these APIs directly to "verify" an adapter from inside
-this environment — it will fail regardless of whether the adapter code
-is correct. A normal deployment (Vercel, an unrestricted machine) does
-not have this restriction.
+`fantasy.premierleague.com`, `api.sleeper.app`, `site.api.espn.com`, *and*
+this project's own Supabase host (`*.supabase.co`) are all blocked by
+this environment's egress proxy (confirmed via direct `curl`/build
+attempts — the proxy denies the connection, not the upstream service).
+This is why every adapter's tests use hand-written fixtures instead of
+live calls, why `warehouse.py`'s tests use `httpx.MockTransport`, and why
+`apps/web`'s Supabase queries (`lib/players.ts`) have an explicit
+graceful-failure path (`page.tsx` shows a per-section inline error, the
+API route returns `502`) rather than assuming the query succeeds. Don't
+spend time trying to `curl` these hosts directly to "verify" something
+from inside this environment — it will fail regardless of whether the
+code is correct. A normal deployment (Vercel, an unrestricted machine)
+does not have this restriction, and the Supabase MCP tools (`execute_sql`,
+`apply_migration`, etc.) work fine from here even though direct HTTP
+calls to the same project don't — they go through different
+infrastructure than this sandbox's own network stack.
 
-### `apps/web`'s FPL logic is a hand-synced port, not shared code
+### The warehouse (Supabase/Postgres) — `services/ingestion/fantasy_ingest/warehouse.py`
 
-`apps/web/lib/fpl.ts` reimplements the same normalization as
-`services/ingestion/fantasy_ingest/adapters/fpl.py` in TypeScript, since
-the Next.js app and the Python ingestion service don't share a runtime.
-If you change FPL's normalization logic in one, check whether the other
-needs the same change — there's no build step or generator keeping them
-in sync.
+`sports`, `sources`, `teams`, `players` tables (`teams`/`players` keyed
+`unique(source_id, external_id)`, so every sync is an upsert). RLS is on
+for every table: public `SELECT`, writes require the service role key.
+`sync_adapter(adapter)` / `sync_all([...])` fetch one or more adapters'
+`teams`/`players` and POST them to Supabase's PostgREST API directly over
+httpx (`on_conflict` + `Prefer: resolution=merge-duplicates` — no
+`supabase-py` dependency). `apps/web` reads the same tables read-only via
+`@supabase/supabase-js` with the anon/publishable key (`lib/supabase.ts`,
+`lib/players.ts`) — never the service role key, which stays server-side.
 
-### No warehouse yet — everything fetches and normalizes in-process
+**The tables currently hold hand-seeded data (inserted via the Supabase
+MCP tools), not a live sync result** — see the network-egress note above
+for why `sync_all` has never actually run against live upstream data from
+inside this environment. Don't assume the warehouse's current contents
+reflect anything beyond the adapters' own test fixtures.
 
-Neither `services/ingestion` nor `services/fpl-planner` writes to a
-database. Both are invoked on demand and return in-memory data. The
-planned Postgres warehouse (stage 3 in `docs/ARCHITECTURE.md`) doesn't
-exist yet; when it's built, Supabase is the intended host (already
-connected as an MCP tool in Claude Code sessions on this project — no
-separate credential setup needed).
+There's no scheduler yet — running a sync means invoking
+`python -m fantasy_ingest.warehouse` by hand (or wiring it into a cron
+job / scheduled function somewhere that can actually reach the internet).
 
 ### `services/fpl-planner` data provenance
 

@@ -1,20 +1,42 @@
-import { fetchTopPlayers, type Player } from "@/lib/fpl";
+import { fetchTopPlayers, type WarehousePlayer } from "@/lib/players";
 
-const POSITION_ORDER = ["GKP", "DEF", "MID", "FWD"];
+interface SportSection {
+  sportId: string;
+  label: string;
+  players: WarehousePlayer[];
+  error: string | null;
+}
 
-async function loadTopPlayers(): Promise<{ players: Player[]; error: string | null }> {
+async function loadSport(sportId: string, label: string): Promise<SportSection> {
   try {
-    return { players: await fetchTopPlayers(10), error: null };
+    return { sportId, label, players: await fetchTopPlayers(sportId, 10), error: null };
   } catch (error) {
     return {
+      sportId,
+      label,
       players: [],
-      error: error instanceof Error ? error.message : "Unknown error fetching FPL data",
+      error: error instanceof Error ? error.message : "Unknown error querying the warehouse",
     };
   }
 }
 
+function formatPrice(price: number | null): string {
+  return price ? `£${price.toFixed(1)}m` : "—";
+}
+
+function formatPoints(points: number | null): string {
+  return points ? String(points) : "—";
+}
+
+function formatForm(form: number | null): string {
+  return form ? form.toFixed(1) : "—";
+}
+
 export default async function Home() {
-  const { players, error } = await loadTopPlayers();
+  const sections = await Promise.all([
+    loadSport("premier-league", "Premier League"),
+    loadSport("nfl", "NFL"),
+  ]);
 
   return (
     <div className="flex min-h-screen">
@@ -33,7 +55,7 @@ export default async function Home() {
           <div className="rounded-md border border-slate-800 p-4 text-sm">
             <div className="font-medium text-slate-200">Fantasy Premier League</div>
             <div className="mt-1 text-xs text-slate-500">
-              Live player data — no specific league connected yet.
+              Warehouse data — no specific league connected yet.
             </div>
           </div>
         </div>
@@ -42,8 +64,12 @@ export default async function Home() {
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-500">
             NFL
           </h3>
-          <div className="rounded-md border border-dashed border-slate-800 p-4 text-sm text-slate-500">
-            ESPN, Sleeper, Yahoo — not connected yet.
+          <div className="rounded-md border border-slate-800 p-4 text-sm">
+            <div className="font-medium text-slate-200">ESPN, Sleeper</div>
+            <div className="mt-1 text-xs text-slate-500">
+              Warehouse data — no specific league connected yet. Yahoo not
+              connected.
+            </div>
           </div>
         </div>
       </aside>
@@ -54,49 +80,53 @@ export default async function Home() {
           Connect an ESPN, Sleeper, Yahoo, or Fantasy Premier League account to
           see projections, matchup breakdowns, and trade opportunities across
           all of your leagues in one place. Full connection flow is coming
-          soon — below is live FPL player data as a first look.
+          soon — below is real data synced into the warehouse as a first look.
         </p>
 
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-200">
-            FPL — Top 10 by total points
-          </h2>
+        {sections.map((section) => (
+          <section key={section.sportId} className="mt-8">
+            <h2 className="text-lg font-semibold text-slate-200">
+              {section.label} — top players by points
+            </h2>
 
-          {error ? (
-            <p className="mt-3 rounded-md border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-400">
-              Couldn&apos;t load live FPL data: {error}
-            </p>
-          ) : (
-            <div className="mt-3 overflow-hidden rounded-md border border-slate-800">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-900 text-slate-400">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Player</th>
-                    <th className="px-4 py-2 font-medium">Team</th>
-                    <th className="px-4 py-2 font-medium">Pos</th>
-                    <th className="px-4 py-2 font-medium">Price</th>
-                    <th className="px-4 py-2 font-medium">Points</th>
-                    <th className="px-4 py-2 font-medium">Form</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {players.map((player) => (
-                    <tr key={player.id} className="border-t border-slate-800">
-                      <td className="px-4 py-2 text-slate-200">{player.name}</td>
-                      <td className="px-4 py-2 text-slate-400">{player.team}</td>
-                      <td className="px-4 py-2 text-slate-400">
-                        {POSITION_ORDER.includes(player.position) ? player.position : "—"}
-                      </td>
-                      <td className="px-4 py-2 text-slate-400">£{player.price.toFixed(1)}m</td>
-                      <td className="px-4 py-2 text-slate-200">{player.totalPoints}</td>
-                      <td className="px-4 py-2 text-slate-400">{player.form.toFixed(1)}</td>
+            {section.error ? (
+              <p className="mt-3 rounded-md border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-400">
+                Couldn&apos;t load {section.label} data: {section.error}
+              </p>
+            ) : section.players.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No {section.label} data synced yet.</p>
+            ) : (
+              <div className="mt-3 overflow-hidden rounded-md border border-slate-800">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-900 text-slate-400">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Player</th>
+                      <th className="px-4 py-2 font-medium">Team</th>
+                      <th className="px-4 py-2 font-medium">Pos</th>
+                      <th className="px-4 py-2 font-medium">Source</th>
+                      <th className="px-4 py-2 font-medium">Price</th>
+                      <th className="px-4 py-2 font-medium">Points</th>
+                      <th className="px-4 py-2 font-medium">Form</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                  </thead>
+                  <tbody>
+                    {section.players.map((player) => (
+                      <tr key={`${player.sourceId}-${player.externalId}`} className="border-t border-slate-800">
+                        <td className="px-4 py-2 text-slate-200">{player.name}</td>
+                        <td className="px-4 py-2 text-slate-400">{player.team ?? "—"}</td>
+                        <td className="px-4 py-2 text-slate-400">{player.position ?? "—"}</td>
+                        <td className="px-4 py-2 text-slate-500">{player.sourceId}</td>
+                        <td className="px-4 py-2 text-slate-400">{formatPrice(player.price)}</td>
+                        <td className="px-4 py-2 text-slate-200">{formatPoints(player.totalPoints)}</td>
+                        <td className="px-4 py-2 text-slate-400">{formatForm(player.form)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ))}
       </main>
     </div>
   );
