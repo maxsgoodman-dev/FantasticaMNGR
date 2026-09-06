@@ -5,31 +5,44 @@ sports platforms and turns it into cross-league analytics behind a single
 dashboard. The pipeline is designed in five stages; only the first and last
 are built today.
 
-## 1. Source adapters — **built** (FPL, Sleeper)
+## 1. Source adapters — **built** (FPL, Sleeper, ESPN)
 
 One adapter per platform (FPL, ESPN, Sleeper, Yahoo, ...), each implementing
 a common `FantasySourceAdapter` interface (`fetch_players`, `fetch_teams`,
 `fetch_matchups`) and normalizing that platform's response shape into shared
 `Player` and `Team` models. This keeps every downstream stage platform-agnostic.
+Each adapter also declares a `sport` (`"nfl"` or `"premier-league"` today —
+see stage 5), since a platform never spans sports.
 
 Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
 
-- **FPL (`adapters/fpl.py`)** — fetches the public
+- **FPL (`adapters/fpl.py`, sport `premier-league`)** — fetches the public
   `bootstrap-static` endpoint and normalizes `elements` → `Player` and
   `teams` → `Team`. HTTP fetching is split from normalization so the mapping
   logic is unit-testable without a network call.
-- **Sleeper (`adapters/sleeper.py`)** — fetches the public `players/nfl`
-  endpoint and normalizes it into `Player`; `Team` is a hardcoded 32-team
-  NFL reference table since Sleeper has no "list all teams" endpoint (the
-  32 teams don't get renumbered mid-season the way FPL's clubs do).
-  Standard Sleeper leagues draft rather than buy players, so there's no
-  salary-cap concept to populate `price` from, and `total_points`/`form`
-  would need a separate per-week stats pull this adapter doesn't do yet —
-  both are left at 0 with a comment explaining why, not faked.
+- **Sleeper (`adapters/sleeper.py`, sport `nfl`)** — fetches the public
+  `players/nfl` endpoint and normalizes it into `Player`; `Team` is a
+  hardcoded 32-team NFL reference table since Sleeper has no "list all
+  teams" endpoint (the 32 teams don't get renumbered mid-season the way
+  FPL's clubs do). Standard Sleeper leagues draft rather than buy players,
+  so there's no salary-cap concept to populate `price` from, and
+  `total_points`/`form` would need a separate per-week stats pull this
+  adapter doesn't do yet — both are left at 0 with a comment explaining
+  why, not faked.
+- **ESPN (`adapters/espn.py`, sport `nfl`)** — fetches the public site-API
+  `/teams` list, then each team's `/roster` (32 calls total; ESPN's core
+  API `/athletes` list is paginated `$ref` links, one HTTP call per
+  player, not viable for a full-league pull). **Response shape unverified
+  against a live call** — this sandbox's egress proxy blocks
+  `site.api.espn.com`, so the endpoint URLs and fields come from
+  cross-referenced public documentation, not a captured response.
+  Normalization is written defensively (skip malformed entries, don't
+  crash) for exactly this reason — see the module docstring.
+  `price`/`total_points`/`form` are left at 0, same reasoning as Sleeper's.
 
-Not yet implemented: ESPN, Yahoo adapters; FPL head-to-head matchup data
-(needs a league ID + manager ID, not available from the public bootstrap
-endpoint); Sleeper matchups (needs a league ID, same shape of gap).
+Not yet implemented: Yahoo adapter; FPL, Sleeper, and ESPN head-to-head
+matchup data, all of which need a league ID (ESPN's private leagues
+additionally need `espn_s2`/`SWID` auth cookies) not available yet.
 
 ## 2. Scheduled sync / polling — **planned**
 
