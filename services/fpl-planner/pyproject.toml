@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fpl-planner"
+version = "0.1.0"
+description = "FPL squad planner: historical data loaders and a squad/XI optimiser"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "pulp",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["fpl_planner"]
