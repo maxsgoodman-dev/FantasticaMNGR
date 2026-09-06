@@ -198,3 +198,30 @@ def test_fetch_league_data_pulls_teams_and_every_week_so_far():
     assert len(result.weekly_scores) == 2  # both rosters, week 1 only (week 2 empty)
     assert any(score.week == 1 and score.team_external_id == "1" for score in result.weekly_scores)
     assert any(entry.player_name == "Patrick Mahomes" for entry in result.roster_players)
+
+
+def test_fetch_league_data_skips_a_week_whose_matchups_call_fails():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/players/nfl"):
+            return httpx.Response(200, json=PLAYERS_FIXTURE)
+        if path.endswith("/league/L1/users"):
+            return httpx.Response(200, json=USERS_FIXTURE)
+        if path.endswith("/league/L1/rosters"):
+            return httpx.Response(200, json=ROSTERS_FIXTURE)
+        if path.endswith("/state/nfl"):
+            return httpx.Response(200, json={"week": 2})
+        if path.endswith("/league/L1/matchups/1"):
+            return httpx.Response(200, json=MATCHUPS_FIXTURE_WEEK_1)
+        if path.endswith("/league/L1/matchups/2"):
+            return httpx.Response(500, json={"error": "internal error"})
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = SleeperAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    result = adapter.fetch_league_data(league_id="L1", my_user_id="u1")
+
+    # Week 1 data survives even though week 2's call failed.
+    assert len(result.weekly_scores) == 2
+    assert any(score.week == 1 for score in result.weekly_scores)
+    assert not any(score.week == 2 for score in result.weekly_scores)

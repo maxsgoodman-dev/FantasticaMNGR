@@ -1,3 +1,5 @@
+import sys
+
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
@@ -166,17 +168,29 @@ class SleeperAdapter(FantasySourceAdapter):
     def fetch_league_data(self, league_id: str, my_user_id: str) -> LeagueSyncResult:
         names_by_id = {player.id: player.name for player in self.fetch_players()}
 
-        users = self._client.get(LEAGUE_USERS_URL.format(league_id=league_id)).json()
-        rosters = self._client.get(LEAGUE_ROSTERS_URL.format(league_id=league_id)).json()
-        teams = _normalize_league_teams(rosters, users, my_user_id)
+        users_response = self._client.get(LEAGUE_USERS_URL.format(league_id=league_id))
+        users_response.raise_for_status()
+        rosters_response = self._client.get(LEAGUE_ROSTERS_URL.format(league_id=league_id))
+        rosters_response.raise_for_status()
+        teams = _normalize_league_teams(rosters_response.json(), users_response.json(), my_user_id)
 
-        current_week = self._client.get(STATE_URL).json()["week"]
+        state_response = self._client.get(STATE_URL)
+        state_response.raise_for_status()
+        current_week = state_response.json()["week"]
 
         weekly_scores: list[WeeklyScore] = []
         roster_players: list[RosterEntry] = []
         for week in range(1, current_week + 1):
-            matchups = self._client.get(LEAGUE_MATCHUPS_URL.format(league_id=league_id, week=week)).json()
-            scores, entries = _normalize_week(matchups, week, names_by_id)
+            response = self._client.get(LEAGUE_MATCHUPS_URL.format(league_id=league_id, week=week))
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                # A single week's matchups call failing (network blip, transient
+                # 5xx) must not lose every other week's data already collected —
+                # same reasoning as ESPN's per-team roster skip.
+                print(f"sleeper: skipping league {league_id} week {week}: {error}", file=sys.stderr)
+                continue
+            scores, entries = _normalize_week(response.json(), week, names_by_id)
             weekly_scores.extend(scores)
             roster_players.extend(entries)
 
