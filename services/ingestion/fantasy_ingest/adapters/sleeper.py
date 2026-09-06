@@ -5,6 +5,10 @@ from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEn
 from fantasy_ingest.models import Player, Team
 
 PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
+STATE_URL = "https://api.sleeper.app/v1/state/nfl"
+LEAGUE_USERS_URL = "https://api.sleeper.app/v1/league/{league_id}/users"
+LEAGUE_ROSTERS_URL = "https://api.sleeper.app/v1/league/{league_id}/rosters"
+LEAGUE_MATCHUPS_URL = "https://api.sleeper.app/v1/league/{league_id}/matchups/{week}"
 
 # Sleeper has no "list all NFL teams" endpoint — the 32 teams are fixed,
 # unlike FPL's mid-season-renumbered club IDs, so this is safe to hardcode.
@@ -158,3 +162,22 @@ class SleeperAdapter(FantasySourceAdapter):
         # Sleeper matchups are league-scoped (GET /league/{league_id}/matchups/{week}),
         # and no league ID is available yet. Not implemented.
         raise NotImplementedError("Sleeper matchups require a league ID")
+
+    def fetch_league_data(self, league_id: str, my_user_id: str) -> LeagueSyncResult:
+        names_by_id = {player.id: player.name for player in self.fetch_players()}
+
+        users = self._client.get(LEAGUE_USERS_URL.format(league_id=league_id)).json()
+        rosters = self._client.get(LEAGUE_ROSTERS_URL.format(league_id=league_id)).json()
+        teams = _normalize_league_teams(rosters, users, my_user_id)
+
+        current_week = self._client.get(STATE_URL).json()["week"]
+
+        weekly_scores: list[WeeklyScore] = []
+        roster_players: list[RosterEntry] = []
+        for week in range(1, current_week + 1):
+            matchups = self._client.get(LEAGUE_MATCHUPS_URL.format(league_id=league_id, week=week)).json()
+            scores, entries = _normalize_week(matchups, week, names_by_id)
+            weekly_scores.extend(scores)
+            roster_players.extend(entries)
+
+        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
