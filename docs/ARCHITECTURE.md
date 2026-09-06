@@ -5,7 +5,7 @@ sports platforms and turns it into cross-league analytics behind a single
 dashboard. The pipeline is designed in five stages; only the first and last
 are built today.
 
-## 1. Source adapters — **built** (FPL only)
+## 1. Source adapters — **built** (FPL, Sleeper)
 
 One adapter per platform (FPL, ESPN, Sleeper, Yahoo, ...), each implementing
 a common `FantasySourceAdapter` interface (`fetch_players`, `fetch_teams`,
@@ -18,10 +18,18 @@ Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
   `bootstrap-static` endpoint and normalizes `elements` → `Player` and
   `teams` → `Team`. HTTP fetching is split from normalization so the mapping
   logic is unit-testable without a network call.
+- **Sleeper (`adapters/sleeper.py`)** — fetches the public `players/nfl`
+  endpoint and normalizes it into `Player`; `Team` is a hardcoded 32-team
+  NFL reference table since Sleeper has no "list all teams" endpoint (the
+  32 teams don't get renumbered mid-season the way FPL's clubs do).
+  Standard Sleeper leagues draft rather than buy players, so there's no
+  salary-cap concept to populate `price` from, and `total_points`/`form`
+  would need a separate per-week stats pull this adapter doesn't do yet —
+  both are left at 0 with a comment explaining why, not faked.
 
-Not yet implemented: ESPN, Sleeper, Yahoo adapters, and FPL head-to-head
-matchup data (`fetch_matchups`), which requires a league ID and manager ID
-not available from the public bootstrap endpoint.
+Not yet implemented: ESPN, Yahoo adapters; FPL head-to-head matchup data
+(needs a league ID + manager ID, not available from the public bootstrap
+endpoint); Sleeper matchups (needs a league ID, same shape of gap).
 
 ## 2. Scheduled sync / polling — **planned**
 
