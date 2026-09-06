@@ -2,8 +2,10 @@
 
 Fantasy Analytics Dashboard pulls data from multiple, unaffiliated fantasy
 sports platforms and turns it into cross-league analytics behind a single
-dashboard. The pipeline is designed in five stages; only the first and last
-are built today.
+dashboard. The pipeline is designed in five stages. Stage 1 (source
+adapters) is built for three platforms; stage 5 (dashboard UI) has one
+direct, unaudited path from FPL's adapter logic straight to the page,
+bypassing the still-unbuilt stages 2-4 in between.
 
 ## 1. Source adapters — **built** (FPL, Sleeper, ESPN)
 
@@ -75,12 +77,19 @@ placeholder-architecture pattern `services/ingestion` uses. See
 `services/fpl-planner/docs/` for data provenance and the optimiser's
 methodology/known gaps (notably: no fixture-difficulty term yet).
 
-## 5. Dashboard UI — **placeholder built**
+## 5. Dashboard UI — **first live data wired** (FPL only)
 
-`apps/web` is a Next.js (App Router) app. Today it renders a static shell —
-an empty "Leagues" nav and a "coming soon" main panel — with no data wired
-up. It will eventually read from the mart layer via an API layer (not yet
-designed).
+`apps/web` is a Next.js (App Router) app. It now renders live FPL player
+data (`lib/fpl.ts` fetches and normalizes FPL's `bootstrap-static`
+directly — a hand-synced TypeScript port of `adapters/fpl.py`'s logic,
+since this app doesn't share a runtime with `services/ingestion`) behind
+an API route (`/api/fpl/players`) and a top-10-by-points table on the
+homepage. This bypasses stages 2-4 entirely — there's still no scheduler,
+warehouse, or mart layer, so this is a direct source-to-UI read, not the
+eventual architecture. Sleeper and ESPN are listed in the nav but not
+wired to real data yet. The eventual design still reads from the mart
+layer via an API layer (not yet designed) rather than an app-level fetch
+straight to one platform's API.
 
 **Sport is a first-class dimension, not just league.** The nav switches
 between sports (currently NFL and Premier League; both are the two
