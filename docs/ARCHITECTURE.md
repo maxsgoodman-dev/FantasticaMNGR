@@ -5,7 +5,7 @@ sports platforms and turns it into cross-league analytics behind a single
 dashboard. The pipeline is designed in five stages; only the first and last
 are built today.
 
-## 1. Source adapters — **built** (FPL only)
+## 1. Source adapters — **built** (FPL, ESPN)
 
 One adapter per platform (FPL, ESPN, Sleeper, Yahoo, ...), each implementing
 a common `FantasySourceAdapter` interface (`fetch_players`, `fetch_teams`,
@@ -18,10 +18,21 @@ Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
   `bootstrap-static` endpoint and normalizes `elements` → `Player` and
   `teams` → `Team`. HTTP fetching is split from normalization so the mapping
   logic is unit-testable without a network call.
+- **ESPN (`adapters/espn.py`)** — fetches the public site-API `/teams` list,
+  then each team's `/roster` (32 calls total; ESPN's core API `/athletes`
+  list is paginated `$ref` links, one HTTP call per player, not viable for
+  a full-league pull). **Response shape unverified against a live call** —
+  this sandbox's egress proxy blocks `site.api.espn.com`, so the endpoint
+  URLs and fields come from cross-referenced public documentation, not a
+  captured response. Normalization is written defensively (skip malformed
+  entries, don't crash) for exactly this reason — see the module docstring.
+  `price`/`total_points`/`form` are left at 0 (no built-in per-player salary
+  in standard ESPN leagues; points need a league-scoped stats view not
+  implemented yet).
 
-Not yet implemented: ESPN, Sleeper, Yahoo adapters, and FPL head-to-head
-matchup data (`fetch_matchups`), which requires a league ID and manager ID
-not available from the public bootstrap endpoint.
+Not yet implemented: Sleeper, Yahoo adapters; FPL and ESPN head-to-head
+matchup data, both of which need a league ID (ESPN's private leagues
+additionally need `espn_s2`/`SWID` auth cookies) not available yet.
 
 ## 2. Scheduled sync / polling — **planned**
 
