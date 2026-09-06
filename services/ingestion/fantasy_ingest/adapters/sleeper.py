@@ -77,6 +77,7 @@ def _normalize_players(raw_json: dict) -> list[Player]:
 
 class SleeperAdapter(FantasySourceAdapter):
     source = "sleeper"
+    sport = "nfl"
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client or httpx.Client()

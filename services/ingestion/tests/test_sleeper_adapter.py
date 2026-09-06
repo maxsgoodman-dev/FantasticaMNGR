@@ -1,4 +1,9 @@
-from fantasy_ingest.adapters.sleeper import NFL_TEAMS, _normalize_players, _normalize_teams
+from fantasy_ingest.adapters.sleeper import (
+    NFL_TEAMS,
+    SleeperAdapter,
+    _normalize_players,
+    _normalize_teams,
+)
 from fantasy_ingest.models import Player, Team
 
 PLAYERS_FIXTURE = {
@@ -30,6 +35,10 @@ PLAYERS_FIXTURE = {
         "position": None,
     },
 }
+
+
+def test_adapter_declares_sport():
+    assert SleeperAdapter.sport == "nfl"
 
 
 def test_normalize_teams():
