@@ -89,6 +89,7 @@ def _normalize_roster(raw_json: dict, team_short_name: str) -> list[Player]:
 
 class ESPNAdapter(FantasySourceAdapter):
     source = "espn"
+    sport = "nfl"
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client or httpx.Client()

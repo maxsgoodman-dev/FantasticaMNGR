@@ -5,33 +5,43 @@ sports platforms and turns it into cross-league analytics behind a single
 dashboard. The pipeline is designed in five stages; only the first and last
 are built today.
 
-## 1. Source adapters — **built** (FPL, ESPN)
+## 1. Source adapters — **built** (FPL, Sleeper, ESPN)
 
 One adapter per platform (FPL, ESPN, Sleeper, Yahoo, ...), each implementing
 a common `FantasySourceAdapter` interface (`fetch_players`, `fetch_teams`,
 `fetch_matchups`) and normalizing that platform's response shape into shared
 `Player` and `Team` models. This keeps every downstream stage platform-agnostic.
+Each adapter also declares a `sport` (`"nfl"` or `"premier-league"` today —
+see stage 5), since a platform never spans sports.
 
 Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
 
-- **FPL (`adapters/fpl.py`)** — fetches the public
+- **FPL (`adapters/fpl.py`, sport `premier-league`)** — fetches the public
   `bootstrap-static` endpoint and normalizes `elements` → `Player` and
   `teams` → `Team`. HTTP fetching is split from normalization so the mapping
   logic is unit-testable without a network call.
-- **ESPN (`adapters/espn.py`)** — fetches the public site-API `/teams` list,
-  then each team's `/roster` (32 calls total; ESPN's core API `/athletes`
-  list is paginated `$ref` links, one HTTP call per player, not viable for
-  a full-league pull). **Response shape unverified against a live call** —
-  this sandbox's egress proxy blocks `site.api.espn.com`, so the endpoint
-  URLs and fields come from cross-referenced public documentation, not a
-  captured response. Normalization is written defensively (skip malformed
-  entries, don't crash) for exactly this reason — see the module docstring.
-  `price`/`total_points`/`form` are left at 0 (no built-in per-player salary
-  in standard ESPN leagues; points need a league-scoped stats view not
-  implemented yet).
+- **Sleeper (`adapters/sleeper.py`, sport `nfl`)** — fetches the public
+  `players/nfl` endpoint and normalizes it into `Player`; `Team` is a
+  hardcoded 32-team NFL reference table since Sleeper has no "list all
+  teams" endpoint (the 32 teams don't get renumbered mid-season the way
+  FPL's clubs do). Standard Sleeper leagues draft rather than buy players,
+  so there's no salary-cap concept to populate `price` from, and
+  `total_points`/`form` would need a separate per-week stats pull this
+  adapter doesn't do yet — both are left at 0 with a comment explaining
+  why, not faked.
+- **ESPN (`adapters/espn.py`, sport `nfl`)** — fetches the public site-API
+  `/teams` list, then each team's `/roster` (32 calls total; ESPN's core
+  API `/athletes` list is paginated `$ref` links, one HTTP call per
+  player, not viable for a full-league pull). **Response shape unverified
+  against a live call** — this sandbox's egress proxy blocks
+  `site.api.espn.com`, so the endpoint URLs and fields come from
+  cross-referenced public documentation, not a captured response.
+  Normalization is written defensively (skip malformed entries, don't
+  crash) for exactly this reason — see the module docstring.
+  `price`/`total_points`/`form` are left at 0, same reasoning as Sleeper's.
 
-Not yet implemented: Sleeper, Yahoo adapters; FPL and ESPN head-to-head
-matchup data, both of which need a league ID (ESPN's private leagues
+Not yet implemented: Yahoo adapter; FPL, Sleeper, and ESPN head-to-head
+matchup data, all of which need a league ID (ESPN's private leagues
 additionally need `espn_s2`/`SWID` auth cookies) not available yet.
 
 ## 2. Scheduled sync / polling — **planned**
@@ -71,6 +81,14 @@ methodology/known gaps (notably: no fixture-difficulty term yet).
 an empty "Leagues" nav and a "coming soon" main panel — with no data wired
 up. It will eventually read from the mart layer via an API layer (not yet
 designed).
+
+**Sport is a first-class dimension, not just league.** The nav switches
+between sports (currently NFL and Premier League; both are the two
+`sport` values `FantasySourceAdapter` subclasses declare — see stage 1)
+before drilling into that sport's leagues/platforms — not one flat list
+mixing an ESPN NFL league with an FPL Premier League squad. NFL groups
+ESPN/Sleeper/Yahoo; Premier League currently only has FPL, with room for
+other soccer leagues later without renaming this dimension.
 
 ## FPL Manager port-over — **done for data + analysis, adapter integration still open**
 

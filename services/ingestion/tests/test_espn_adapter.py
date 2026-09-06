@@ -1,4 +1,4 @@
-from fantasy_ingest.adapters.espn import _normalize_roster, _normalize_teams
+from fantasy_ingest.adapters.espn import ESPNAdapter, _normalize_roster, _normalize_teams
 from fantasy_ingest.models import Player, Team
 
 # Shaped per public documentation (nntrn gist, pseudo-r/Public-ESPN-API),
@@ -56,6 +56,10 @@ ROSTER_FIXTURE_FLAT = {
         {"id": "4362628", "fullName": "Amon-Ra St. Brown", "position": {"abbreviation": "WR"}},
     ]
 }
+
+
+def test_adapter_declares_sport():
+    assert ESPNAdapter.sport == "nfl"
 
 
 def test_normalize_teams():
