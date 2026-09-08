@@ -162,3 +162,13 @@ def test_sync_all_leagues_isolates_a_failing_league(recorded_requests):
 
     assert results["sleeper:L1"] == {"teams": 1, "weekly_scores": 1, "roster_players": 1}
     assert "FPL is down" in results["fpl:L2"]["error"]
+
+
+def test_sync_league_data_always_posts_league_row_but_skips_empty_child_tables(recorded_requests):
+    client = make_client(recorded_requests)
+
+    counts = sync_league_data(SLEEPER_LEAGUE, LeagueSyncResult(), client=client)
+
+    assert counts == {"teams": 0, "weekly_scores": 0, "roster_players": 0}
+    paths = [request.url.path for request in recorded_requests]
+    assert paths == ["/rest/v1/leagues"]
