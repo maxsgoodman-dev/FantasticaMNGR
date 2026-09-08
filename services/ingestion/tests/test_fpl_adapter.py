@@ -238,6 +238,46 @@ def test_fetch_classic_league_data_gives_my_entry_full_weekly_history_and_others
     result = adapter.fetch_classic_league_data(league_id="C1", my_entry_id="111")
 
     my_scores = [s for s in result.weekly_scores if s.team_external_id == "111"]
+    assert len(my_scores) == 3
     assert {s.week for s in my_scores} == {1, 2, 3}
     other_scores = [s for s in result.weekly_scores if s.team_external_id == "222"]
     assert other_scores == [WeeklyScore(team_external_id="222", week=3, points=950.0)]
+
+
+def test_fetch_classic_league_data_skips_a_week_whose_live_points_call_fails():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/bootstrap-static/"):
+            return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE | {"events": EVENTS_FIXTURE[:3]})
+        if path.endswith("/leagues-classic/C1/standings/"):
+            return httpx.Response(
+                200,
+                json={"standings": {**CLASSIC_STANDINGS_PAGE_1["standings"], "has_next": False}},
+            )
+        if path.endswith("/event/1/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 6}}]})
+        if path.endswith("/event/2/live/"):
+            return httpx.Response(500, json={"error": "internal error"})
+        if path.endswith("/event/3/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 9}}]})
+        if path.endswith("/entry/111/event/1/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 55}}
+            )
+        if path.endswith("/entry/111/event/3/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 60}}
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    result = adapter.fetch_classic_league_data(league_id="C1", my_entry_id="111")
+
+    my_scores = [s for s in result.weekly_scores if s.team_external_id == "111"]
+    assert len(my_scores) == 2
+    assert {s.week for s in my_scores} == {1, 3}
+    assert not any(s.week == 2 for s in my_scores)
+
+    my_roster_weeks = {entry.week for entry in result.roster_players if entry.team_external_id == "111"}
+    assert my_roster_weeks == {1, 3}

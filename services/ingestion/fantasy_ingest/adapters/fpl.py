@@ -1,3 +1,5 @@
+import sys
+
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
@@ -146,10 +148,24 @@ class FPLAdapter(FantasySourceAdapter):
 
         roster_players: list[RosterEntry] = []
         for week in range(1, current_week + 1):
-            live = self._client.get(EVENT_LIVE_URL.format(week=week)).json()
-            live_points_by_id = {element["id"]: element["stats"]["total_points"] for element in live["elements"]}
+            try:
+                live_response = self._client.get(EVENT_LIVE_URL.format(week=week))
+                live_response.raise_for_status()
+                picks_response = self._client.get(ENTRY_PICKS_URL.format(entry_id=my_entry_id, week=week))
+                picks_response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                # A single week's live-points or picks call failing must not lose
+                # every other week's data already collected — same reasoning as
+                # SleeperAdapter.fetch_league_data's per-week skip.
+                print(
+                    f"fpl: skipping league {league_id} week {week} for entry {my_entry_id}: {error}",
+                    file=sys.stderr,
+                )
+                continue
 
-            picks = self._client.get(ENTRY_PICKS_URL.format(entry_id=my_entry_id, week=week)).json()
+            live = live_response.json()
+            live_points_by_id = {element["id"]: element["stats"]["total_points"] for element in live["elements"]}
+            picks = picks_response.json()
             roster_players.extend(_normalize_picks(picks, live_points_by_id, names_by_id, my_entry_id, week))
             weekly_scores.append(
                 WeeklyScore(team_external_id=my_entry_id, week=week, points=float(picks["entry_history"]["points"]))
