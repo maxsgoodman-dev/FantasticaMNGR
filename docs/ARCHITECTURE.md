@@ -49,6 +49,9 @@ Lives in `services/ingestion/fantasy_ingest/`. Currently implemented:
 Not yet implemented: Yahoo adapter; FPL, Sleeper, and ESPN head-to-head
 matchup data, all of which need a league ID (ESPN's private leagues
 additionally need `espn_s2`/`SWID` auth cookies) not available yet.
+(Sleeper and FPL now have this at the league-scoped level via
+differently-named methods — see §3a — though the generic
+`fetch_matchups()` stub itself remains unimplemented on every adapter.)
 
 ## 2. Scheduled sync / polling — **planned**
 

@@ -120,11 +120,13 @@ def _normalize_h2h_teams(pages: list[dict], my_entry_id: str) -> list[FantasyTea
     return teams
 
 
-def _normalize_h2h_matches(pages: list[dict]) -> list[WeeklyScore]:
+def _normalize_h2h_matches(pages: list[dict], current_week: int) -> list[WeeklyScore]:
     scores = []
     for page in pages:
         for match in page["results"]:
             week = match["event"]
+            if week > current_week:
+                continue
             entry_1 = str(match["entry_1_entry"])
             scores.append(
                 WeeklyScore(
@@ -239,7 +241,7 @@ class FPLAdapter(FantasySourceAdapter):
         teams = _normalize_h2h_teams(standings_pages, my_entry_id)
 
         matches_pages = self._fetch_matches_pages(H2H_MATCHES_URL.format(league_id=league_id))
-        weekly_scores = _normalize_h2h_matches(matches_pages)
+        weekly_scores = _normalize_h2h_matches(matches_pages, current_week)
 
         roster_players: list[RosterEntry] = []
         for week in range(1, current_week + 1):

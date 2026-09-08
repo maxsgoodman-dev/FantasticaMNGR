@@ -314,17 +314,24 @@ def test_normalize_h2h_teams():
 
 
 def test_normalize_h2h_matches_produces_a_score_row_per_side():
-    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE])
+    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE], current_week=2)
 
     assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in scores
     assert WeeklyScore(team_external_id="222", week=1, points=58.0, opponent_external_id="111") in scores
 
 
 def test_normalize_h2h_matches_handles_a_bye_with_no_second_entry():
-    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE])
+    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE], current_week=2)
 
     week_2_scores = [s for s in scores if s.week == 2]
     assert week_2_scores == [WeeklyScore(team_external_id="111", week=2, points=70.0, opponent_external_id=None)]
+
+
+def test_normalize_h2h_matches_excludes_weeks_after_current():
+    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE], current_week=1)
+
+    assert all(score.week <= 1 for score in scores)
+    assert any(score.team_external_id == "111" and score.week == 1 for score in scores)
 
 
 def test_fetch_h2h_league_data_pulls_teams_matches_and_every_teams_roster():
