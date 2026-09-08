@@ -357,3 +357,35 @@ def test_fetch_h2h_league_data_pulls_teams_matches_and_every_teams_roster():
     assert {team.external_id for team in result.teams} == {"111", "222"}
     assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in result.weekly_scores
     assert {entry.team_external_id for entry in result.roster_players} == {"111", "222"}
+
+
+def test_fetch_h2h_league_data_skips_a_team_whose_picks_call_fails():
+    events_one_week = [{"id": 1, "is_current": True, "finished": False}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/bootstrap-static/"):
+            return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE | {"events": events_one_week})
+        if path.endswith("/leagues-h2h/H1/standings/"):
+            return httpx.Response(200, json={"standings": {**H2H_STANDINGS_PAGE["standings"], "has_next": False}})
+        if path.endswith("/leagues-h2h-matches/league/H1/"):
+            return httpx.Response(200, json={**H2H_MATCHES_PAGE, "results": [H2H_MATCHES_PAGE["results"][0]]})
+        if path.endswith("/event/1/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 6}}]})
+        if path.endswith("/entry/111/event/1/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 6}}
+            )
+        if path.endswith("/entry/222/event/1/picks/"):
+            return httpx.Response(500, json={"error": "internal error"})
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    result = adapter.fetch_h2h_league_data(league_id="H1", my_entry_id="111")
+
+    # Team 222's picks call failed, but team 111's roster data still comes
+    # through, and the overall teams/weekly_scores are unaffected.
+    assert {team.external_id for team in result.teams} == {"111", "222"}
+    assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in result.weekly_scores
+    assert {entry.team_external_id for entry in result.roster_players} == {"111"}
