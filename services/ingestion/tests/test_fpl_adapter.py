@@ -5,6 +5,8 @@ from fantasy_ingest.adapters.fpl import (
     FPLAdapter,
     _current_gameweek,
     _normalize_classic_standings,
+    _normalize_h2h_matches,
+    _normalize_h2h_teams,
     _normalize_picks,
     _normalize_players,
     _normalize_teams,
@@ -281,3 +283,77 @@ def test_fetch_classic_league_data_skips_a_week_whose_live_points_call_fails():
 
     my_roster_weeks = {entry.week for entry in result.roster_players if entry.team_external_id == "111"}
     assert my_roster_weeks == {1, 3}
+
+
+H2H_STANDINGS_PAGE = {
+    "standings": {
+        "has_next": False,
+        "results": [
+            {"entry": 111, "entry_name": "Team Alpha", "player_name": "Max Goodman"},
+            {"entry": 222, "entry_name": "Team Beta", "player_name": "Rival Person"},
+        ],
+    }
+}
+
+H2H_MATCHES_PAGE = {
+    "has_next": False,
+    "results": [
+        {"event": 1, "entry_1_entry": 111, "entry_1_points": 65, "entry_2_entry": 222, "entry_2_points": 58},
+        {"event": 2, "entry_1_entry": 111, "entry_1_points": 70, "entry_2_entry": None, "entry_2_points": 0},
+    ],
+}
+
+
+def test_normalize_h2h_teams():
+    teams = _normalize_h2h_teams([H2H_STANDINGS_PAGE], my_entry_id="111")
+
+    assert teams == [
+        FantasyTeam(external_id="111", name="Team Alpha", owner_name="Max Goodman", is_mine=True),
+        FantasyTeam(external_id="222", name="Team Beta", owner_name="Rival Person", is_mine=False),
+    ]
+
+
+def test_normalize_h2h_matches_produces_a_score_row_per_side():
+    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE])
+
+    assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in scores
+    assert WeeklyScore(team_external_id="222", week=1, points=58.0, opponent_external_id="111") in scores
+
+
+def test_normalize_h2h_matches_handles_a_bye_with_no_second_entry():
+    scores = _normalize_h2h_matches([H2H_MATCHES_PAGE])
+
+    week_2_scores = [s for s in scores if s.week == 2]
+    assert week_2_scores == [WeeklyScore(team_external_id="111", week=2, points=70.0, opponent_external_id=None)]
+
+
+def test_fetch_h2h_league_data_pulls_teams_matches_and_every_teams_roster():
+    events_one_week = [{"id": 1, "is_current": True, "finished": False}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/bootstrap-static/"):
+            return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE | {"events": events_one_week})
+        if path.endswith("/leagues-h2h/H1/standings/"):
+            return httpx.Response(200, json={"standings": {**H2H_STANDINGS_PAGE["standings"], "has_next": False}})
+        if path.endswith("/leagues-h2h-matches/league/H1/"):
+            return httpx.Response(200, json={**H2H_MATCHES_PAGE, "results": [H2H_MATCHES_PAGE["results"][0]]})
+        if path.endswith("/event/1/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 6}}]})
+        if path.endswith("/entry/111/event/1/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 6}}
+            )
+        if path.endswith("/entry/222/event/1/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 6}}
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    result = adapter.fetch_h2h_league_data(league_id="H1", my_entry_id="111")
+
+    assert {team.external_id for team in result.teams} == {"111", "222"}
+    assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in result.weekly_scores
+    assert {entry.team_external_id for entry in result.roster_players} == {"111", "222"}

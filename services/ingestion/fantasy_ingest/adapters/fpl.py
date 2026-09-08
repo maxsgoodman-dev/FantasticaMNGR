@@ -10,6 +10,8 @@ BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 CLASSIC_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/"
 ENTRY_PICKS_URL = "https://fantasy.premierleague.com/api/entry/{entry_id}/event/{week}/picks/"
 EVENT_LIVE_URL = "https://fantasy.premierleague.com/api/event/{week}/live/"
+H2H_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-h2h/{league_id}/standings/"
+H2H_MATCHES_URL = "https://fantasy.premierleague.com/api/leagues-h2h-matches/league/{league_id}/"
 
 _ELEMENT_TYPE_TO_POSITION = {
     1: "GKP",
@@ -102,6 +104,48 @@ def _normalize_classic_standings(
     return teams, scores
 
 
+def _normalize_h2h_teams(pages: list[dict], my_entry_id: str) -> list[FantasyTeam]:
+    teams = []
+    for page in pages:
+        for result in page["standings"]["results"]:
+            entry_id = str(result["entry"])
+            teams.append(
+                FantasyTeam(
+                    external_id=entry_id,
+                    name=result["entry_name"],
+                    owner_name=result["player_name"],
+                    is_mine=(entry_id == my_entry_id),
+                )
+            )
+    return teams
+
+
+def _normalize_h2h_matches(pages: list[dict]) -> list[WeeklyScore]:
+    scores = []
+    for page in pages:
+        for match in page["results"]:
+            week = match["event"]
+            entry_1 = str(match["entry_1_entry"])
+            scores.append(
+                WeeklyScore(
+                    team_external_id=entry_1,
+                    week=week,
+                    points=float(match["entry_1_points"]),
+                    opponent_external_id=str(match["entry_2_entry"]) if match.get("entry_2_entry") is not None else None,
+                )
+            )
+            if match.get("entry_2_entry") is not None:
+                scores.append(
+                    WeeklyScore(
+                        team_external_id=str(match["entry_2_entry"]),
+                        week=week,
+                        points=float(match["entry_2_points"]),
+                        opponent_external_id=entry_1,
+                    )
+                )
+    return scores
+
+
 class FPLAdapter(FantasySourceAdapter):
     source = "fpl"
     sport = "premier-league"
@@ -170,5 +214,55 @@ class FPLAdapter(FantasySourceAdapter):
             weekly_scores.append(
                 WeeklyScore(team_external_id=my_entry_id, week=week, points=float(picks["entry_history"]["points"]))
             )
+
+        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
+
+    def _fetch_matches_pages(self, url: str) -> list[dict]:
+        pages = []
+        page = 1
+        while True:
+            response = self._client.get(url, params={"page": page})
+            response.raise_for_status()
+            data = response.json()
+            pages.append(data)
+            if not data["has_next"]:
+                break
+            page += 1
+        return pages
+
+    def fetch_h2h_league_data(self, league_id: str, my_entry_id: str) -> LeagueSyncResult:
+        bootstrap = self._fetch_bootstrap_static()
+        current_week = _current_gameweek(bootstrap)
+        names_by_id = {element["id"]: f"{element['first_name']} {element['second_name']}" for element in bootstrap["elements"]}
+
+        standings_pages = self._fetch_standings_pages(H2H_STANDINGS_URL.format(league_id=league_id))
+        teams = _normalize_h2h_teams(standings_pages, my_entry_id)
+
+        matches_pages = self._fetch_matches_pages(H2H_MATCHES_URL.format(league_id=league_id))
+        weekly_scores = _normalize_h2h_matches(matches_pages)
+
+        roster_players: list[RosterEntry] = []
+        for week in range(1, current_week + 1):
+            try:
+                live_response = self._client.get(EVENT_LIVE_URL.format(week=week))
+                live_response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                print(f"fpl: skipping league {league_id} week {week} (live points): {error}", file=sys.stderr)
+                continue
+            live = live_response.json()
+            live_points_by_id = {element["id"]: element["stats"]["total_points"] for element in live["elements"]}
+
+            for team in teams:
+                try:
+                    picks_response = self._client.get(ENTRY_PICKS_URL.format(entry_id=team.external_id, week=week))
+                    picks_response.raise_for_status()
+                except httpx.HTTPStatusError as error:
+                    print(
+                        f"fpl: skipping league {league_id} week {week} for entry {team.external_id}: {error}",
+                        file=sys.stderr,
+                    )
+                    continue
+                picks = picks_response.json()
+                roster_players.extend(_normalize_picks(picks, live_points_by_id, names_by_id, team.external_id, week))
 
         return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
