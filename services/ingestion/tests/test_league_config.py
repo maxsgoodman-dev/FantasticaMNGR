@@ -1,7 +1,9 @@
 import os
+from unittest.mock import patch
 
 import pytest
 
+from fantasy_ingest.adapters.sleeper import SleeperAdapter
 from fantasy_ingest.league_config import build_league_sync_jobs
 
 
@@ -44,3 +46,21 @@ def test_build_league_sync_jobs_skips_fpl_when_entry_id_missing(monkeypatch):
     monkeypatch.setenv("FPL_CLASSIC_LEAGUE_ID", "C1")
 
     assert build_league_sync_jobs() == []
+
+
+def test_build_league_sync_jobs_sleeper_fetch_fns_use_their_own_league_id(monkeypatch):
+    monkeypatch.setenv("SLEEPER_USER_ID", "u1")
+    monkeypatch.setenv("SLEEPER_LEAGUE_IDS", "L1,L2")
+
+    jobs = build_league_sync_jobs()
+
+    # Prove each job's fetch_fn closure carries its own league_id rather than
+    # all of them sharing the loop's final value (the classic Python
+    # late-binding closure bug) by actually invoking both fetch_fns and
+    # recording what SleeperAdapter.fetch_league_data was called with.
+    with patch.object(SleeperAdapter, "fetch_league_data", return_value="fake-result") as mock_fetch:
+        for _, fetch_fn in jobs:
+            fetch_fn()
+
+    assert mock_fetch.call_args_list[0].args == ("L1", "u1")
+    assert mock_fetch.call_args_list[1].args == ("L2", "u1")

@@ -20,7 +20,7 @@ def build_league_sync_jobs() -> list[tuple[dict, callable]]:
 
     sleeper_user_id = os.environ.get("SLEEPER_USER_ID")
     if sleeper_user_id:
-        league_ids = [x for x in os.environ.get("SLEEPER_LEAGUE_IDS", "").split(",") if x]
+        league_ids = [x.strip() for x in os.environ.get("SLEEPER_LEAGUE_IDS", "").split(",") if x.strip()]
         adapter = SleeperAdapter()
         for league_id in league_ids:
             league = {
