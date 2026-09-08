@@ -89,6 +89,35 @@ players respectively at last check); ESPN failed that first run on the
 `teams` rows for ESPN are still the original hand-seeded fixture values
 pending a re-run.
 
+## 3a. League-scoped ingestion — **built** (Sleeper, FPL)
+
+Separate from the platform-wide `teams`/`players` catalogs above: `leagues`,
+`fantasy_teams`, `weekly_scores`, and `roster_players` hold Max's actual
+fantasy leagues — 2 Sleeper NFL leagues (head-to-head) and 2 FPL leagues (one
+~20-person head-to-head, one ~100-person classic) — with real rosters and
+already-computed fantasy points, not a global player list. Yahoo (2 more NFL
+leagues) is deferred: it needs OAuth2 user auth, not just an adapter.
+
+Both platforms already compute fantasy points themselves and expose them
+publicly (Sleeper's `/league/{id}/matchups/{week}`, FPL's per-gameweek entry
+picks + live element points), so this ingests those numbers directly rather
+than reimplementing a scoring engine from raw stats.
+
+Keyed by natural external ids throughout (`source_id` + `external_league_id`
++ `external_team_id`, ...), not surrogate-key FKs — every write is a
+PostgREST upsert via `fantasy_ingest.warehouse.sync_league_data`, same
+pattern as `sync_adapter`, and upserts never hand back a generated id to
+chain into a follow-up write.
+
+`fantasy_ingest.league_config.build_league_sync_jobs()` reads league IDs
+from environment variables (see `.env.example`); `fantasy_ingest.sync_leagues`
+is the manual entrypoint (`python -m fantasy_ingest.sync_leagues`), separate
+from `fantasy_ingest.warehouse`'s own catalog sync. See
+`docs/superpowers/specs/2026-09-06-league-team-view-design.md` for the full
+design, including why the FPL classic league only gets full roster detail
+for Max's own entry (the other ~99 are a standings snapshot, not a full
+per-entry weekly pull).
+
 ## 4. Analytics / mart layer — **planned** (one piece built standalone)
 
 Derived metrics computed from the warehouse, e.g.:
