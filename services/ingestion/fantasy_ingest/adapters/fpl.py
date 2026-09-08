@@ -5,6 +5,9 @@ from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEn
 from fantasy_ingest.models import Player, Team
 
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
+CLASSIC_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/"
+ENTRY_PICKS_URL = "https://fantasy.premierleague.com/api/entry/{entry_id}/event/{week}/picks/"
+EVENT_LIVE_URL = "https://fantasy.premierleague.com/api/event/{week}/live/"
 
 _ELEMENT_TYPE_TO_POSITION = {
     1: "GKP",
@@ -73,6 +76,30 @@ def _normalize_picks(
     return entries
 
 
+def _normalize_classic_standings(
+    pages: list[dict], my_entry_id: str, week: int
+) -> tuple[list[FantasyTeam], list[WeeklyScore]]:
+    teams = []
+    scores = []
+    for page in pages:
+        for result in page["standings"]["results"]:
+            entry_id = str(result["entry"])
+            is_mine = entry_id == my_entry_id
+            teams.append(
+                FantasyTeam(
+                    external_id=entry_id,
+                    name=result["entry_name"],
+                    owner_name=result["player_name"],
+                    is_mine=is_mine,
+                )
+            )
+            if not is_mine:
+                scores.append(
+                    WeeklyScore(team_external_id=entry_id, week=week, points=float(result["total"]))
+                )
+    return teams, scores
+
+
 class FPLAdapter(FantasySourceAdapter):
     source = "fpl"
     sport = "premier-league"
@@ -95,3 +122,37 @@ class FPLAdapter(FantasySourceAdapter):
         # FPL head-to-head standings require a league ID and manager ID,
         # neither of which is available from bootstrap-static. Not implemented yet.
         raise NotImplementedError("FPL matchups require a league ID and manager ID")
+
+    def _fetch_standings_pages(self, url: str) -> list[dict]:
+        pages = []
+        page = 1
+        while True:
+            response = self._client.get(url, params={"page_standings": page})
+            response.raise_for_status()
+            data = response.json()
+            pages.append(data)
+            if not data["standings"]["has_next"]:
+                break
+            page += 1
+        return pages
+
+    def fetch_classic_league_data(self, league_id: str, my_entry_id: str) -> LeagueSyncResult:
+        bootstrap = self._fetch_bootstrap_static()
+        current_week = _current_gameweek(bootstrap)
+        names_by_id = {element["id"]: f"{element['first_name']} {element['second_name']}" for element in bootstrap["elements"]}
+
+        pages = self._fetch_standings_pages(CLASSIC_STANDINGS_URL.format(league_id=league_id))
+        teams, weekly_scores = _normalize_classic_standings(pages, my_entry_id, current_week)
+
+        roster_players: list[RosterEntry] = []
+        for week in range(1, current_week + 1):
+            live = self._client.get(EVENT_LIVE_URL.format(week=week)).json()
+            live_points_by_id = {element["id"]: element["stats"]["total_points"] for element in live["elements"]}
+
+            picks = self._client.get(ENTRY_PICKS_URL.format(entry_id=my_entry_id, week=week)).json()
+            roster_players.extend(_normalize_picks(picks, live_points_by_id, names_by_id, my_entry_id, week))
+            weekly_scores.append(
+                WeeklyScore(team_external_id=my_entry_id, week=week, points=float(picks["entry_history"]["points"]))
+            )
+
+        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)

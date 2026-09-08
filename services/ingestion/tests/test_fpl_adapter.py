@@ -1,13 +1,15 @@
+import httpx
 import pytest
 
 from fantasy_ingest.adapters.fpl import (
     FPLAdapter,
     _current_gameweek,
+    _normalize_classic_standings,
     _normalize_picks,
     _normalize_players,
     _normalize_teams,
 )
-from fantasy_ingest.league_models import RosterEntry
+from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, Team
 
 BOOTSTRAP_STATIC_FIXTURE = {
@@ -154,3 +156,88 @@ def test_normalize_picks_starting_xi_is_position_11_or_lower():
 
     assert len(entries) == 3
     assert sum(1 for entry in entries if entry.is_starter) == 2
+
+
+CLASSIC_STANDINGS_PAGE_1 = {
+    "standings": {
+        "has_next": True,
+        "results": [
+            {"entry": 111, "entry_name": "Team Alpha", "player_name": "Max Goodman", "total": 987},
+            {"entry": 222, "entry_name": "Team Beta", "player_name": "Someone Else", "total": 950},
+        ],
+    }
+}
+
+CLASSIC_STANDINGS_PAGE_2 = {
+    "standings": {
+        "has_next": False,
+        "results": [
+            {"entry": 333, "entry_name": "Team Gamma", "player_name": "A Third Person", "total": 900},
+        ],
+    }
+}
+
+
+def test_normalize_classic_standings_lists_every_entry_as_a_team():
+    teams, _ = _normalize_classic_standings(
+        [CLASSIC_STANDINGS_PAGE_1, CLASSIC_STANDINGS_PAGE_2], my_entry_id="111", week=4
+    )
+
+    assert teams == [
+        FantasyTeam(external_id="111", name="Team Alpha", owner_name="Max Goodman", is_mine=True),
+        FantasyTeam(external_id="222", name="Team Beta", owner_name="Someone Else", is_mine=False),
+        FantasyTeam(external_id="333", name="Team Gamma", owner_name="A Third Person", is_mine=False),
+    ]
+
+
+def test_normalize_classic_standings_only_scores_entries_that_are_not_mine():
+    # My own entry's weekly scores come from per-week picks instead (see
+    # fetch_classic_league_data) — the standings total is season-cumulative,
+    # not a real per-week number, so it must not collide with that.
+    _, scores = _normalize_classic_standings(
+        [CLASSIC_STANDINGS_PAGE_1, CLASSIC_STANDINGS_PAGE_2], my_entry_id="111", week=4
+    )
+
+    assert all(score.team_external_id != "111" for score in scores)
+    assert any(score.team_external_id == "222" and score.points == 950.0 for score in scores)
+    assert any(score.team_external_id == "333" and score.points == 900.0 for score in scores)
+
+
+def test_fetch_classic_league_data_gives_my_entry_full_weekly_history_and_others_just_a_snapshot():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/bootstrap-static/"):
+            return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE | {"events": EVENTS_FIXTURE[:3]})
+        if path.endswith("/leagues-classic/C1/standings/"):
+            return httpx.Response(
+                200,
+                json={"standings": {**CLASSIC_STANDINGS_PAGE_1["standings"], "has_next": False}},
+            )
+        if path.endswith("/event/1/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 6}}]})
+        if path.endswith("/event/2/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 7}}]})
+        if path.endswith("/event/3/live/"):
+            return httpx.Response(200, json={"elements": [{"id": 101, "stats": {"total_points": 9}}]})
+        if path.endswith("/entry/111/event/1/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 55}}
+            )
+        if path.endswith("/entry/111/event/2/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 58}}
+            )
+        if path.endswith("/entry/111/event/3/picks/"):
+            return httpx.Response(
+                200, json={"picks": [{"element": 101, "position": 1, "multiplier": 1}], "entry_history": {"points": 60}}
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    result = adapter.fetch_classic_league_data(league_id="C1", my_entry_id="111")
+
+    my_scores = [s for s in result.weekly_scores if s.team_external_id == "111"]
+    assert {s.week for s in my_scores} == {1, 2, 3}
+    other_scores = [s for s in result.weekly_scores if s.team_external_id == "222"]
+    assert other_scores == [WeeklyScore(team_external_id="222", week=3, points=950.0)]
