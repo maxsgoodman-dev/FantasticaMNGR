@@ -2,8 +2,9 @@ import httpx
 import pytest
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
+from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, Team
-from fantasy_ingest.warehouse import sync_adapter, sync_all
+from fantasy_ingest.warehouse import sync_adapter, sync_all, sync_all_leagues, sync_league_data
 
 
 class FakeAdapter(FantasySourceAdapter):
@@ -103,3 +104,61 @@ def test_sync_all_isolates_one_adapters_failure_from_the_rest(recorded_requests)
 
     assert results["testsource"] == {"teams": 1, "players": 1}
     assert "upstream is down" in results["brokensource"]["error"]
+
+
+SLEEPER_LEAGUE = {
+    "source_id": "sleeper",
+    "sport_id": "nfl",
+    "external_league_id": "L1",
+    "name": "Test Sleeper League",
+    "season": "2026",
+    "format": "head_to_head",
+}
+
+
+def make_league_sync_result() -> LeagueSyncResult:
+    return LeagueSyncResult(
+        teams=[FantasyTeam(external_id="1", name="Team Alpha", owner_name="Max", is_mine=True)],
+        weekly_scores=[WeeklyScore(team_external_id="1", week=1, points=100.0, opponent_external_id="2")],
+        roster_players=[
+            RosterEntry(
+                team_external_id="1", week=1, player_external_id="4046", player_name="Patrick Mahomes",
+                is_starter=True, points=24.0,
+            )
+        ],
+    )
+
+
+def test_sync_league_data_posts_league_teams_scores_and_roster(recorded_requests):
+    client = make_client(recorded_requests)
+
+    counts = sync_league_data(SLEEPER_LEAGUE, make_league_sync_result(), client=client)
+
+    assert counts == {"teams": 1, "weekly_scores": 1, "roster_players": 1}
+    paths = [request.url.path for request in recorded_requests]
+    assert paths == [
+        "/rest/v1/leagues",
+        "/rest/v1/fantasy_teams",
+        "/rest/v1/weekly_scores",
+        "/rest/v1/roster_players",
+    ]
+
+    league_request = recorded_requests[0]
+    assert "on_conflict=source_id,external_league_id" in str(league_request.url)
+
+
+def test_sync_all_leagues_isolates_a_failing_league(recorded_requests):
+    client = make_client(recorded_requests)
+
+    def broken_fetch():
+        raise RuntimeError("FPL is down")
+
+    jobs = [
+        (SLEEPER_LEAGUE, make_league_sync_result),
+        ({**SLEEPER_LEAGUE, "source_id": "fpl", "external_league_id": "L2"}, broken_fetch),
+    ]
+
+    results = sync_all_leagues(jobs, client=client)
+
+    assert results["sleeper:L1"] == {"teams": 1, "weekly_scores": 1, "roster_players": 1}
+    assert "FPL is down" in results["fpl:L2"]["error"]

@@ -14,10 +14,12 @@ upsert, so re-running a sync is always safe.
 from __future__ import annotations
 
 import os
+from typing import Callable
 
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
+from fantasy_ingest.league_models import LeagueSyncResult
 
 
 def _client() -> httpx.Client:
@@ -102,6 +104,133 @@ def sync_all(adapters: list[FantasySourceAdapter], client: httpx.Client | None =
                 results[adapter.source] = sync_adapter(adapter, client=client)
             except Exception as error:  # noqa: BLE001 - deliberately broad, see docstring
                 results[adapter.source] = {"error": str(error)}
+    finally:
+        if owns_client:
+            client.close()
+    return results
+
+
+def _league_row(league: dict) -> dict:
+    return {
+        "source_id": league["source_id"],
+        "sport_id": league["sport_id"],
+        "external_league_id": league["external_league_id"],
+        "name": league["name"],
+        "season": league["season"],
+        "format": league["format"],
+    }
+
+
+def _fantasy_team_rows(league: dict, result: LeagueSyncResult) -> list[dict]:
+    return [
+        {
+            "source_id": league["source_id"],
+            "external_league_id": league["external_league_id"],
+            "external_team_id": team.external_id,
+            "team_name": team.name,
+            "owner_name": team.owner_name,
+            "is_mine": team.is_mine,
+        }
+        for team in result.teams
+    ]
+
+
+def _weekly_score_rows(league: dict, result: LeagueSyncResult) -> list[dict]:
+    return [
+        {
+            "source_id": league["source_id"],
+            "external_league_id": league["external_league_id"],
+            "external_team_id": score.team_external_id,
+            "week": score.week,
+            "points": score.points,
+            "opponent_external_team_id": score.opponent_external_id,
+        }
+        for score in result.weekly_scores
+    ]
+
+
+def _roster_player_rows(league: dict, result: LeagueSyncResult) -> list[dict]:
+    return [
+        {
+            "source_id": league["source_id"],
+            "external_league_id": league["external_league_id"],
+            "external_team_id": entry.team_external_id,
+            "week": entry.week,
+            "player_external_id": entry.player_external_id,
+            "player_name": entry.player_name,
+            "is_starter": entry.is_starter,
+            "points": entry.points,
+        }
+        for entry in result.roster_players
+    ]
+
+
+def sync_league_data(
+    league: dict, result: LeagueSyncResult, client: httpx.Client | None = None
+) -> dict[str, int]:
+    """Upsert one league's already-fetched sync result into the warehouse.
+
+    `league` describes the league itself (source_id, sport_id,
+    external_league_id, name, season, format); `result` is what
+    `fetch_league_data` / `fetch_h2h_league_data` / `fetch_classic_league_data`
+    returned. Kept separate from `sync_adapter` (which syncs the platform-wide
+    teams/players catalogs, untouched by this function).
+    """
+    owns_client = client is None
+    client = client or _client()
+    try:
+        response = client.post("/leagues?on_conflict=source_id,external_league_id", json=[_league_row(league)])
+        response.raise_for_status()
+
+        team_rows = _fantasy_team_rows(league, result)
+        if team_rows:
+            response = client.post(
+                "/fantasy_teams?on_conflict=source_id,external_league_id,external_team_id", json=team_rows
+            )
+            response.raise_for_status()
+
+        score_rows = _weekly_score_rows(league, result)
+        if score_rows:
+            response = client.post(
+                "/weekly_scores?on_conflict=source_id,external_league_id,external_team_id,week", json=score_rows
+            )
+            response.raise_for_status()
+
+        roster_rows = _roster_player_rows(league, result)
+        if roster_rows:
+            response = client.post(
+                "/roster_players?on_conflict=source_id,external_league_id,external_team_id,week,player_external_id",
+                json=roster_rows,
+            )
+            response.raise_for_status()
+    finally:
+        if owns_client:
+            client.close()
+
+    return {"teams": len(team_rows), "weekly_scores": len(score_rows), "roster_players": len(roster_rows)}
+
+
+def sync_all_leagues(
+    jobs: list[tuple[dict, Callable[[], LeagueSyncResult]]], client: httpx.Client | None = None
+) -> dict[str, dict]:
+    """Fetch and sync every configured league, isolating one league's failure.
+
+    Each job is `(league, fetch_fn)` — `fetch_fn` is called here (not before),
+    so a fetch-time failure is caught per-league too, same as an upsert
+    failure, matching sync_all's isolation guarantee for the platform-wide
+    catalogs.
+    """
+    owns_client = client is None
+    client = client or _client()
+    results: dict[str, dict] = {}
+    try:
+        for league, fetch_fn in jobs:
+            key = f"{league['source_id']}:{league['external_league_id']}"
+            try:
+                result = fetch_fn()
+                results[key] = sync_league_data(league, result, client=client)
+            except Exception as error:  # noqa: BLE001 - deliberately broad, see sync_all's docstring
+                results[key] = {"error": str(error)}
     finally:
         if owns_client:
             client.close()
