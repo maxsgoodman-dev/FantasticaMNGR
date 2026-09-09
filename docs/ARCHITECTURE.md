@@ -124,8 +124,9 @@ chain into a follow-up write.
 
 `fantasy_ingest.league_config.build_league_sync_jobs()` reads league IDs
 from environment variables (see `.env.example`); `fantasy_ingest.sync_leagues`
-is the manual entrypoint (`python -m fantasy_ingest.sync_leagues`), separate
-from `fantasy_ingest.warehouse`'s own catalog sync. See
+is the entrypoint (`python -m fantasy_ingest.sync_leagues`, also run on the
+schedule described in §2), separate from `fantasy_ingest.warehouse`'s own
+catalog sync. See
 `docs/superpowers/specs/2026-09-06-league-team-view-design.md` for the full
 design, including why the FPL classic league only gets full roster detail
 for Max's own entry (the other ~99 are a standings snapshot, not a full
