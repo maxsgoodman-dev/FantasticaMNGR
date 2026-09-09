@@ -15,7 +15,7 @@
 **Files:**
 - Create: `.github/workflows/sync.yml`
 
-- [ ] **Step 1: Write the workflow file**
+- [x] **Step 1: Write the workflow file**
 
 Create `.github/workflows/sync.yml`:
 
@@ -66,12 +66,12 @@ Notes for the engineer implementing this:
 - The two `run` steps are two separate `env:` blocks (not one shared block) because `warehouse.py` doesn't need the league-specific vars — keeping them separate documents which script actually reads which var, matching `.env.example`'s own grouping (see that file's two comment blocks).
 - Every `secrets.X` reference here needs a matching repository secret or it resolves to an empty string at runtime — see Task 2's note on this before expecting a real run to succeed.
 
-- [ ] **Step 2: Validate the YAML parses**
+- [x] **Step 2: Validate the YAML parses**
 
 Run: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sync.yml'))"`
 Expected: no output, exit code 0
 
-- [ ] **Step 3: Sanity-check the two entrypoints still exist and fail the way this plan assumes**
+- [x] **Step 3: Sanity-check the two entrypoints still exist and fail the way this plan assumes**
 
 This confirms the exact module paths used in the workflow are correct and that `sync_leagues` really does exit 0 with no configured leagues (so an org that hasn't set the league secrets yet doesn't get a failing scheduled run) — run from a scratch venv so it matches what the Actions runner will do:
 
@@ -91,7 +91,7 @@ Expected:
 - `python -m fantasy_ingest.warehouse` exits non-zero (currently a `KeyError: 'SUPABASE_URL'` traceback — that's the existing behavior of `_client()` in `warehouse.py`, not something this plan changes) — this is fine to see locally with no env vars set; it's exactly why the workflow step supplies `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` via `secrets:`.
 - `python -m fantasy_ingest.sync_leagues` prints `sync_leagues: no leagues configured — see .env.example` and exits 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/sync.yml
@@ -105,7 +105,7 @@ git commit -m "Add scheduled GitHub Actions workflow for warehouse + league sync
 **Files:**
 - Modify: `docs/ARCHITECTURE.md`
 
-- [ ] **Step 1: Update the "Scheduled sync / polling" section**
+- [x] **Step 1: Update the "Scheduled sync / polling" section**
 
 In `docs/ARCHITECTURE.md`, find this heading (currently marked **planned**):
 
@@ -143,7 +143,7 @@ set, the scheduled run fails at the `warehouse` step (missing
 (which prompts for the value rather than taking it as a plain CLI argument).
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/ARCHITECTURE.md
