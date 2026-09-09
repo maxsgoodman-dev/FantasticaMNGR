@@ -53,14 +53,24 @@ additionally need `espn_s2`/`SWID` auth cookies) not available yet.
 differently-named methods — see §3a — though the generic
 `fetch_matchups()` stub itself remains unimplemented on every adapter.)
 
-## 2. Scheduled sync / polling — **planned**
+## 2. Scheduled sync / polling — **built** (fixed interval)
 
-A scheduler that polls each connected source on an interval, tightening the
-interval during live games (e.g. Sunday NFL windows, active PL matchdays) and
-backing off between them. Not built yet. `fantasy_ingest.warehouse.sync_all`
-(stage 3) does the actual fetch-and-upsert work already — running it on a
-schedule is the remaining piece, not a rewrite. Right now it's invoked
-manually (`python -m fantasy_ingest.warehouse`).
+`.github/workflows/sync.yml` runs `fantasy_ingest.warehouse` (platform-wide
+teams/players catalog) and `fantasy_ingest.sync_leagues` (league-scoped
+rosters/scores) on a fixed 6-hour cron schedule, plus `workflow_dispatch` for
+manual runs — replacing the old "invoke it by hand" flow. The adaptive
+version of this (tightening the interval during live game windows, backing
+off otherwise) is still open; see
+`docs/superpowers/specs/2026-09-09-scheduled-sync-design.md` for why fixed
+interval shipped first.
+
+**Required repository secrets** (`Settings → Secrets and variables →
+Actions`), matching `services/ingestion/.env.example`: `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SLEEPER_USER_ID`, `SLEEPER_LEAGUE_IDS`,
+`FPL_ENTRY_ID`, `FPL_H2H_LEAGUE_ID`, `FPL_CLASSIC_LEAGUE_ID`. Until these are
+set, the scheduled run fails at the `warehouse` step (missing
+`SUPABASE_URL`) — set them via the GitHub UI or `gh secret set <NAME>`
+(which prompts for the value rather than taking it as a plain CLI argument).
 
 ## 3. Shared warehouse — **built** (Supabase/Postgres)
 
