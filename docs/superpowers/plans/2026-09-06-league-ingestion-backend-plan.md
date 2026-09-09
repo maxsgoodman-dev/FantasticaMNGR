@@ -16,7 +16,7 @@
 
 **Files:**
 - Create: `supabase/migrations/0001_league_tables.sql`
-- (Live change) Applied to the `fantasticamngr` Supabase project (id `wsmegxfnmkhaailxhuih`) via the Supabase MCP `apply_migration` tool.
+- (Live change) Applied to the `reality-manager` Supabase project (id `wsmegxfnmkhaailxhuih`) via the Supabase MCP `apply_migration` tool.
 
 - [ ] **Step 1: Write the migration SQL**
 

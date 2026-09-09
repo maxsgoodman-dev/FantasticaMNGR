@@ -64,7 +64,7 @@ manually (`python -m fantasy_ingest.warehouse`).
 
 ## 3. Shared warehouse — **built** (Supabase/Postgres)
 
-A Supabase Postgres project (`fantasticamngr`) with `sports`, `sources`,
+A Supabase Postgres project (`reality-manager`) with `sports`, `sources`,
 `teams`, and `players` tables — `players`/`teams` both carry `source_id`
 + `sport_id` and a `unique(source_id, external_id)` constraint, so a
 sync is always an upsert, never a duplicate. Row-level security is
