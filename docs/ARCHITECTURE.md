@@ -2,11 +2,11 @@
 
 Fantasy Analytics Dashboard pulls data from multiple, unaffiliated fantasy
 sports platforms and turns it into cross-league analytics behind a single
-dashboard. The pipeline is designed in five stages. Stages 1 and 3 are
-built (three source adapters, a Postgres warehouse); stage 5 now reads
-from that warehouse instead of one platform's API directly. Stage 2
-(scheduling) and stage 4 (a real analytics/mart layer beyond raw rows)
-are still open.
+dashboard. The pipeline is designed in five stages. Stages 1, 2, and 3 are
+built (three source adapters, a fixed-interval GitHub Actions scheduler, a
+Postgres warehouse); stage 5 now reads from that warehouse instead of one
+platform's API directly. Stage 2's adaptive-interval version and stage 4 (a
+real analytics/mart layer beyond raw rows) are still open.
 
 ## 1. Source adapters — **built** (FPL, Sleeper, ESPN)
 
