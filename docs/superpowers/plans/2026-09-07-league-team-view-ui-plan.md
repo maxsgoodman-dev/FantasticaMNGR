@@ -17,7 +17,7 @@
 **Files:**
 - Create: `apps/web/lib/leagues.ts`
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 Create `apps/web/lib/leagues.ts`:
 
@@ -338,12 +338,12 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
 Expected: no output, exit code 0
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/lib/leagues.ts
@@ -362,7 +362,7 @@ git commit -m "Add lib/leagues.ts data access layer for the team-view UI"
 
 These four files change together in one task because they're interdependent — splitting them would leave an intermediate commit with a broken/duplicated layout (the sidebar would exist in two places at once).
 
-- [ ] **Step 1: Create the sidebar**
+- [x] **Step 1: Create the sidebar**
 
 Create `apps/web/components/Sidebar.tsx`:
 
@@ -439,7 +439,7 @@ export default async function Sidebar() {
 }
 ```
 
-- [ ] **Step 2: Wire the sidebar into the shared layout**
+- [x] **Step 2: Wire the sidebar into the shared layout**
 
 Replace the contents of `apps/web/app/layout.tsx`:
 
@@ -471,7 +471,7 @@ export default function RootLayout({
 }
 ```
 
-- [ ] **Step 3: Relocate the existing player table to `/players`**
+- [x] **Step 3: Relocate the existing player table to `/players`**
 
 Create `apps/web/app/players/page.tsx` (this is today's `app/page.tsx` content, minus the `<aside>` sidebar and the outer flex/`<main>` wrapper — both now live in `layout.tsx`):
 
@@ -573,7 +573,7 @@ export default async function PlayersPage() {
 }
 ```
 
-- [ ] **Step 4: Rewrite the homepage as a redirect to the first league**
+- [x] **Step 4: Rewrite the homepage as a redirect to the first league**
 
 Replace the contents of `apps/web/app/page.tsx`:
 
@@ -618,12 +618,12 @@ export default async function Home() {
 }
 ```
 
-- [ ] **Step 5: Type-check**
+- [x] **Step 5: Type-check**
 
 Run: `cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
 Expected: no output, exit code 0
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/web/components/Sidebar.tsx apps/web/app/layout.tsx apps/web/app/players/page.tsx apps/web/app/page.tsx
@@ -637,7 +637,7 @@ git commit -m "Make the sidebar a real league nav; relocate player table to /pla
 **Files:**
 - Create: `apps/web/app/leagues/[leagueId]/page.tsx`
 
-- [ ] **Step 1: Write the page**
+- [x] **Step 1: Write the page**
 
 Create `apps/web/app/leagues/[leagueId]/page.tsx`:
 
@@ -813,12 +813,12 @@ export default async function LeagueTeamViewPage({
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
 Expected: no output, exit code 0
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/app/leagues/[leagueId]/page.tsx
@@ -831,21 +831,21 @@ git commit -m "Add /leagues/[leagueId] team-view page"
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Install dependencies if needed**
+- [x] **Step 1: Install dependencies if needed**
 
 Run: `cd apps/web && npm install`
 
-- [ ] **Step 2: Type-check the whole app**
+- [x] **Step 2: Type-check the whole app**
 
 Run: `cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
 Expected: no output, exit code 0
 
-- [ ] **Step 3: Attempt a production build**
+- [x] **Step 3: Attempt a production build**
 
 Run: `cd apps/web && npm run build`
 Expected: succeeds. If it fails specifically because Next.js tries to prerender a Supabase-backed page and hits this sandbox's blocked egress to `*.supabase.co` (not a type error, not a syntax error — a network/timeout error during the "Collecting page data" or static-generation phase), that is the same pre-existing sandbox limitation `CLAUDE.md` documents for this app's existing Supabase-backed pages, not a bug in this task's code. Note it and move on to the dev-server check, which uses the same live-reload path the repo owner would actually use.
 
-- [ ] **Step 4: Start the dev server and check it in the browser**
+- [x] **Step 4: Start the dev server and check it in the browser**
 
 Use the Browser tool (`preview_start` with a `.claude/launch.json` entry running `npm run dev` in `apps/web`, port 3000 — create that config file if it doesn't already exist) and visit:
 - `/` — expect either a redirect to `/leagues/<id>` (if any leagues are configured — unlikely in this sandbox, since no real sync has run yet) or the "No leagues synced yet" empty state with a working "browse all players" link.
@@ -854,6 +854,6 @@ Use the Browser tool (`preview_start` with a `.claude/launch.json` entry running
 
 Report what was actually observed (which state — redirect, empty-state, or live data — since this sandbox likely can't reach Supabase to confirm the full happy path, same caveat as the backend plan's own live-sync verification).
 
-- [ ] **Step 5: Report findings**
+- [x] **Step 5: Report findings**
 
 No commit for this task (verification only) — if Step 4 surfaces a real bug (not the known network limitation), fix it in the relevant task's file and re-run this task's checks before considering the plan complete.
