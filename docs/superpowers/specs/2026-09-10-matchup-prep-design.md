@@ -235,13 +235,25 @@ create table public.fpl_sheet_player_data (
   xgc_per_90 numeric,             -- expected goals conceded / 90 (defensive)
   defcon numeric,                 -- defensive contribution metric (2026-27 scoring rule)
   price_change_progress numeric,  -- % progress toward next price rise/fall
-  data_fetched date not null,     -- the sheet's own "Data Fetched" date, not our sync time
+  data_fetched date not null,     -- see note below: this is our own sync date, not literally parsed off the sheet
   source text not null default 'fpl-community-sheet',
   synced_at timestamptz not null default now(),
   unique (external_player_id, data_fetched)
 );
 -- RLS: public SELECT, no write policy — same as every other warehouse table.
 ```
+
+**`data_fetched` revision (found mid-implementation):** the plan
+originally called for parsing the sheet's own self-reported "Data
+Fetched" date off its Intro tab. Checked live: that value sits in an
+*unlabeled* cell (`Intro` tab, row 5 col B) — the "Data Fetched" text
+itself isn't a parseable cell at all (likely a merged cell or separate
+text object gviz's CSV export drops), so the only way to read it is by
+fixed row/column position, fragile to the sheet author ever reordering
+that tab. Using our own sync date (UTC, when the sync ran) instead —
+simpler, doesn't depend on an unlabeled cell's position, and gives the
+same practical outcome (one row per calendar day per player, via the
+same `unique(external_player_id, data_fetched)` constraint).
 
 **Ingestion:** a new lightweight module (not a full `FantasySourceAdapter`
 — this isn't a platform adapter, it's a single CSV pull), e.g.
