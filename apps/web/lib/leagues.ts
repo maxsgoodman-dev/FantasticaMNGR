@@ -31,15 +31,26 @@ export interface RosterPlayerRow {
   playerName: string;
   isStarter: boolean;
   points: number;
-  consistency: ConsistencyScoreRow | null;
+  playerValue: PlayerValueRow | null;
 }
 
-export interface ConsistencyScoreRow {
+export interface PlayerValueRow {
   playerExternalId: string;
   weeksPlayed: number;
   avgPoints: number;
   pointsStddev: number;
   coefficientOfVariation: number | null;
+  tradeValue: number;
+}
+
+export interface TeamStrengthRow {
+  externalTeamId: string;
+  weeksPlayed: number;
+  avgWeeklyPoints: number;
+  weeklyPointsStddev: number;
+  bestWeekPoints: number;
+  worstWeekPoints: number;
+  starterPointsShare: number | null;
 }
 
 export interface StandingsRow {
@@ -47,6 +58,7 @@ export interface StandingsRow {
   week: number;
   points: number;
   previousPoints: number | null;
+  strength: TeamStrengthRow | null;
 }
 
 export interface LeagueTeamView {
@@ -95,12 +107,23 @@ interface RosterPlayerDbRow {
   points: number;
 }
 
-interface ConsistencyScoreDbRow {
+interface PlayerValueDbRow {
   player_external_id: string;
   weeks_played: number;
   avg_points: number;
   points_stddev: number;
   coefficient_of_variation: number | null;
+  trade_value: number;
+}
+
+interface TeamStrengthDbRow {
+  external_team_id: string;
+  weeks_played: number;
+  avg_weekly_points: number;
+  weekly_points_stddev: number;
+  best_week_points: number;
+  worst_week_points: number;
+  starter_points_share: number | null;
 }
 
 function fromLeagueRow(row: LeagueDbRow): League {
@@ -141,19 +164,32 @@ function fromRosterPlayerRow(row: RosterPlayerDbRow): RosterPlayerRow {
     playerName: row.player_name,
     isStarter: row.is_starter,
     points: row.points,
-    // Filled in separately by fetchConsistencyScores — roster_players and
-    // player_consistency_scores are different tables/queries.
-    consistency: null,
+    // Filled in separately by fetchPlayerValues — roster_players and
+    // player_trade_value are different tables/queries.
+    playerValue: null,
   };
 }
 
-function fromConsistencyScoreRow(row: ConsistencyScoreDbRow): ConsistencyScoreRow {
+function fromPlayerValueRow(row: PlayerValueDbRow): PlayerValueRow {
   return {
     playerExternalId: row.player_external_id,
     weeksPlayed: row.weeks_played,
     avgPoints: row.avg_points,
     pointsStddev: row.points_stddev,
     coefficientOfVariation: row.coefficient_of_variation,
+    tradeValue: row.trade_value,
+  };
+}
+
+function fromTeamStrengthRow(row: TeamStrengthDbRow): TeamStrengthRow {
+  return {
+    externalTeamId: row.external_team_id,
+    weeksPlayed: row.weeks_played,
+    avgWeeklyPoints: row.avg_weekly_points,
+    weeklyPointsStddev: row.weekly_points_stddev,
+    bestWeekPoints: row.best_week_points,
+    worstWeekPoints: row.worst_week_points,
+    starterPointsShare: row.starter_points_share,
   };
 }
 
@@ -241,18 +277,20 @@ async function fetchRoster(
   return (data ?? []).map(fromRosterPlayerRow);
 }
 
-async function fetchConsistencyScores(
+export async function fetchPlayerValues(
   sourceId: string,
   externalLeagueId: string,
   playerExternalIds: string[]
-): Promise<Map<string, ConsistencyScoreRow>> {
+): Promise<Map<string, PlayerValueRow>> {
   if (playerExternalIds.length === 0) {
     return new Map();
   }
 
   const { data, error } = await supabase
-    .from("player_consistency_scores")
-    .select("player_external_id, weeks_played, avg_points, points_stddev, coefficient_of_variation")
+    .from("player_trade_value")
+    .select(
+      "player_external_id, weeks_played, avg_points, points_stddev, coefficient_of_variation, trade_value"
+    )
     .eq("source_id", sourceId)
     .eq("external_league_id", externalLeagueId)
     .in("player_external_id", playerExternalIds);
@@ -261,8 +299,34 @@ async function fetchConsistencyScores(
     throw new Error(`warehouse query failed: ${error.message}`);
   }
 
-  const scores = (data ?? []).map(fromConsistencyScoreRow);
-  return new Map(scores.map((score) => [score.playerExternalId, score]));
+  const values = (data ?? []).map(fromPlayerValueRow);
+  return new Map(values.map((value) => [value.playerExternalId, value]));
+}
+
+async function fetchTeamStrength(
+  sourceId: string,
+  externalLeagueId: string,
+  externalTeamIds: string[]
+): Promise<Map<string, TeamStrengthRow>> {
+  if (externalTeamIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("fantasy_team_strength")
+    .select(
+      "external_team_id, weeks_played, avg_weekly_points, weekly_points_stddev, best_week_points, worst_week_points, starter_points_share"
+    )
+    .eq("source_id", sourceId)
+    .eq("external_league_id", externalLeagueId)
+    .in("external_team_id", externalTeamIds);
+
+  if (error) {
+    throw new Error(`warehouse query failed: ${error.message}`);
+  }
+
+  const strengths = (data ?? []).map(fromTeamStrengthRow);
+  return new Map(strengths.map((strength) => [strength.externalTeamId, strength]));
 }
 
 // "Standings" = each team's most recently synced weekly_scores row, not a
@@ -313,6 +377,7 @@ async function fetchStandings(
         week: row.week,
         points: row.points,
         previousPoints: previous?.points ?? null,
+        strength: null,
       });
     }
   }
@@ -368,20 +433,25 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
   const rosterPlayerIds = [
     ...new Set([...myRoster, ...opponentRoster].map((player) => player.playerExternalId)),
   ];
-  const consistencyScores = await fetchConsistencyScores(
-    league.sourceId,
-    league.externalLeagueId,
-    rosterPlayerIds
-  );
-  const withConsistency = (roster: RosterPlayerRow[]): RosterPlayerRow[] =>
+  const playerValues = await fetchPlayerValues(league.sourceId, league.externalLeagueId, rosterPlayerIds);
+  const withPlayerValue = (roster: RosterPlayerRow[]): RosterPlayerRow[] =>
     roster.map((player) => ({
       ...player,
-      consistency: consistencyScores.get(player.playerExternalId) ?? null,
+      playerValue: playerValues.get(player.playerExternalId) ?? null,
     }));
-  myRoster = withConsistency(myRoster);
-  opponentRoster = withConsistency(opponentRoster);
+  myRoster = withPlayerValue(myRoster);
+  opponentRoster = withPlayerValue(opponentRoster);
 
   const standings = await fetchStandings(league.sourceId, league.externalLeagueId, teams);
+  const teamStrengths = await fetchTeamStrength(
+    league.sourceId,
+    league.externalLeagueId,
+    standings.map((row) => row.team.externalTeamId)
+  );
+  const standingsWithStrength: StandingsRow[] = standings.map((row) => ({
+    ...row,
+    strength: teamStrengths.get(row.team.externalTeamId) ?? null,
+  }));
 
   return {
     league,
@@ -393,6 +463,6 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     opponentTeam,
     opponentScore,
     opponentRoster,
-    standings,
+    standings: standingsWithStrength,
   };
 }
