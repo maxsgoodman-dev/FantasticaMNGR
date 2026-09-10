@@ -1,0 +1,39 @@
+name: Sync fantasy data
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ingestion
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install fantasy_ingest
+        run: pip install -e .
+
+      - name: Sync platform-wide teams/players catalog
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m fantasy_ingest.warehouse
+
+      - name: Sync configured leagues (rosters/scores)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLEEPER_USER_ID: ${{ secrets.SLEEPER_USER_ID }}
+          SLEEPER_LEAGUE_IDS: ${{ secrets.SLEEPER_LEAGUE_IDS }}
+          FPL_ENTRY_ID: ${{ secrets.FPL_ENTRY_ID }}
+          FPL_H2H_LEAGUE_ID: ${{ secrets.FPL_H2H_LEAGUE_ID }}
+          FPL_CLASSIC_LEAGUE_ID: ${{ secrets.FPL_CLASSIC_LEAGUE_ID }}
+        run: python -m fantasy_ingest.sync_leagues

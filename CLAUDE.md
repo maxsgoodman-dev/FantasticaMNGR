@@ -133,9 +133,11 @@ hand-seeded fixture values, but don't assume every source has been
 successfully synced live either; check `updated_at` per row if it
 matters for what you're doing.
 
-There's no scheduler yet — running a sync means invoking
-`python -m fantasy_ingest.warehouse` by hand (or wiring it into a cron
-job / scheduled function somewhere that can actually reach the internet).
+`.github/workflows/sync.yml` runs this (and `fantasy_ingest.sync_leagues`)
+on a 6-hour cron schedule, plus manual `workflow_dispatch` — see
+`docs/ARCHITECTURE.md`'s "Scheduled sync / polling" section for the
+required repository secrets. Invoking it by hand
+(`python -m fantasy_ingest.warehouse`) still works for local testing.
 
 ### `services/fpl-planner` data provenance
 

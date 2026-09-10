@@ -1,8 +1,9 @@
 """CLI entrypoint: sync every configured league into the warehouse.
 
 Separate from `fantasy_ingest.warehouse`'s own `main()` (which syncs the
-platform-wide teams/players catalogs) — different trigger, different data,
-same manual-invocation state as the rest of this repo (no scheduler yet).
+platform-wide teams/players catalogs) — different trigger, different data.
+Run on a schedule by `.github/workflows/sync.yml`; `python -m
+fantasy_ingest.sync_leagues` still works for a manual/local run.
 """
 
 from fantasy_ingest.league_config import build_league_sync_jobs
