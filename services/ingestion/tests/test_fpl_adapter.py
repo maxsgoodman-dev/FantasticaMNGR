@@ -10,10 +10,18 @@ from fantasy_ingest.adapters.fpl import (
     _normalize_h2h_teams,
     _normalize_picks,
     _normalize_players,
+    _normalize_projections,
     _normalize_teams,
 )
 from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
-from fantasy_ingest.models import Player, Team
+from fantasy_ingest.models import Player, PlayerProjection, Team
+
+EVENTS_FIXTURE = [
+    {"id": 1, "is_current": False, "finished": True},
+    {"id": 2, "is_current": False, "finished": True},
+    {"id": 3, "is_current": True, "finished": False},
+    {"id": 4, "is_current": False, "finished": False},
+]
 
 BOOTSTRAP_STATIC_FIXTURE = {
     "teams": [
@@ -30,6 +38,7 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "now_cost": 100,
             "total_points": 150,
             "form": "5.5",
+            "ep_this": "6.1",
         },
         {
             "id": 102,
@@ -40,6 +49,7 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "now_cost": 55,
             "total_points": 90,
             "form": "3.0",
+            "ep_this": "3.4",
         },
         {
             "id": 201,
@@ -50,16 +60,11 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "now_cost": 130,
             "total_points": 200,
             "form": "7.2",
+            "ep_this": "8.0",
         },
     ],
+    "events": EVENTS_FIXTURE,
 }
-
-EVENTS_FIXTURE = [
-    {"id": 1, "is_current": False, "finished": True},
-    {"id": 2, "is_current": False, "finished": True},
-    {"id": 3, "is_current": True, "finished": False},
-    {"id": 4, "is_current": False, "finished": False},
-]
 
 
 def test_adapter_declares_sport():
@@ -107,6 +112,37 @@ def test_normalize_players():
             form=7.2,
         ),
     ]
+
+
+def test_normalize_projections():
+    projections = _normalize_projections(BOOTSTRAP_STATIC_FIXTURE)
+
+    assert projections == [
+        PlayerProjection(player_external_id="101", projected_points=6.1),
+        PlayerProjection(player_external_id="102", projected_points=3.4),
+        PlayerProjection(player_external_id="201", projected_points=8.0),
+    ]
+
+
+def test_fetch_projections_returns_current_week_projections():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE)
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    projections = adapter.fetch_projections(3)
+
+    assert projections == _normalize_projections(BOOTSTRAP_STATIC_FIXTURE)
+
+
+def test_fetch_projections_raises_for_a_week_that_isnt_current():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE)
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    with pytest.raises(ValueError, match="current gameweek"):
+        adapter.fetch_projections(4)
 
 
 def test_current_gameweek_is_the_in_progress_or_latest_finished_week():

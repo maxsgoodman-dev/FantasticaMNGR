@@ -4,7 +4,7 @@ import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
-from fantasy_ingest.models import Player, Team
+from fantasy_ingest.models import Player, PlayerProjection, Team
 
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 CLASSIC_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/"
@@ -53,6 +53,19 @@ def _normalize_players(raw_json: dict) -> list[Player]:
             total_points=element["total_points"],
             form=float(element["form"]),
         )
+        for element in raw_json["elements"]
+    ]
+
+
+def _normalize_projections(raw_json: dict) -> list[PlayerProjection]:
+    # `ep_this` (expected points, current gameweek) — not `ep_next` — to
+    # match this adapter's "current week" scope everywhere else (see
+    # fetch_league_data's use of _current_gameweek). The two often
+    # coincide right around a gameweek transition (bootstrap-static keeps
+    # marking a just-finished event "current" until the next one starts),
+    # which is expected, not a bug.
+    return [
+        PlayerProjection(player_external_id=str(element["id"]), projected_points=float(element["ep_this"]))
         for element in raw_json["elements"]
     ]
 
@@ -199,6 +212,23 @@ class FPLAdapter(FantasySourceAdapter):
         # FPL head-to-head standings require a league ID and manager ID,
         # neither of which is available from bootstrap-static. Not implemented yet.
         raise NotImplementedError("FPL matchups require a league ID and manager ID")
+
+    def fetch_projections(self, week: int) -> list[PlayerProjection]:
+        """Current-gameweek expected points for every player.
+
+        `bootstrap-static` only ever exposes `ep_this` for whatever
+        gameweek it currently considers active — there's no way to ask
+        for an arbitrary past/future week's projection through this
+        endpoint. `week` must match that gameweek; passing anything else
+        raises rather than silently mislabeling stale data.
+        """
+        bootstrap = self._fetch_bootstrap_static()
+        current_week = _current_gameweek(bootstrap)
+        if week != current_week:
+            raise ValueError(
+                f"FPL only exposes projections for the current gameweek ({current_week}), not {week}"
+            )
+        return _normalize_projections(bootstrap)
 
     def fetch_entry_history(self, entry_id: str) -> list[dict]:
         """Fetch one FPL manager's multi-season track record.
