@@ -15,7 +15,7 @@
 **Files:**
 - Create: `supabase/migrations/0002_player_consistency_view.sql`
 
-- [ ] **Step 1: Write the migration file**
+- [x] **Step 1: Write the migration file**
 
 Create `supabase/migrations/0002_player_consistency_view.sql`:
 
@@ -50,7 +50,7 @@ group by source_id, external_league_id, player_external_id
 having count(*) >= 2;
 ```
 
-- [ ] **Step 2: Apply the migration to the `reality-manager` Supabase project**
+- [x] **Step 2: Apply the migration to the `reality-manager` Supabase project**
 
 Use the `mcp__supabase__apply_migration` tool (project id `wsmegxfnmkhaailxhuih`, the same project every other `apps/web`/`services/ingestion` command in this repo targets):
 - `name`: `player_consistency_view`
@@ -58,7 +58,7 @@ Use the `mcp__supabase__apply_migration` tool (project id `wsmegxfnmkhaailxhuih`
 
 Expected: the tool call succeeds with no error.
 
-- [ ] **Step 3: Verify the view returns the expected shape**
+- [x] **Step 3: Verify the view returns the expected shape**
 
 Use `mcp__supabase__execute_sql` (same project id) to run:
 
@@ -72,7 +72,7 @@ limit 5;
 
 Expected: 5 rows, each with a non-null `player_name`, `weeks_played >= 2`, and `coefficient_of_variation` either a number or `null` (only `null` when `avg_points` is `0`). This is real synced data (FPL/Sleeper leagues already synced via `.github/workflows/sync.yml`), so exact values will vary run to run as more weeks sync — the shape and constraints are what to check, not specific numbers.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add supabase/migrations/0002_player_consistency_view.sql
@@ -85,11 +85,11 @@ git commit -m "Add player_consistency_scores view (mart layer first slice)"
 
 **Files:** none — verification only, confirming `security_invoker` actually inherited `roster_players`' RLS policy rather than silently exposing or blocking the view.
 
-- [ ] **Step 1: Get the anon/publishable key and project URL**
+- [x] **Step 1: Get the anon/publishable key and project URL**
 
 Use `mcp__supabase__get_project_url` and `mcp__supabase__get_publishable_keys` (project id `wsmegxfnmkhaailxhuih`) — the same values `apps/web/.env.local` already uses (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Do not use the service role key for this check — the whole point is confirming the *public* key can read it, same as every other table `apps/web` queries.
 
-- [ ] **Step 2: Query the view over PostgREST using only the anon key**
+- [x] **Step 2: Query the view over PostgREST using only the anon key**
 
 ```bash
 curl -s "<SUPABASE_URL>/rest/v1/player_consistency_scores?select=player_name,weeks_played,coefficient_of_variation&limit=3" \
@@ -101,6 +101,6 @@ Expected: HTTP 200 with a JSON array of up to 3 rows (not an empty array, not a 
 
 If this specific sandbox's network egress to `*.supabase.co` is blocked (see `docs/ARCHITECTURE.md`'s network-egress note — though note this session found Supabase reachable despite that documented restriction, so try this before assuming it's blocked), fall back to `mcp__supabase__execute_sql`, which can run `set role anon; select ... from public.player_consistency_scores limit 3;` to simulate the anon role's permissions from inside Postgres directly, without needing outbound HTTP.
 
-- [ ] **Step 3: Report findings**
+- [x] **Step 3: Report findings**
 
 No commit for this task (verification only). Record in the final report: which method (PostgREST curl or `set role anon`) was used, and confirm rows came back.
