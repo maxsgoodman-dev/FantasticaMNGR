@@ -61,6 +61,19 @@ export interface StandingsRow {
   strength: TeamStrengthRow | null;
 }
 
+export interface MatchupPreviewRow {
+  externalTeamId: string;
+  projectedPoints: number;
+  startersMissingProjection: number;
+}
+
+export interface FplSheetPlayerRow {
+  playerExternalId: string;
+  difficultyScore: number | null;
+  xgiPer90: number | null;
+  xgcPer90: number | null;
+}
+
 export interface LeagueTeamView {
   league: League;
   week: number;
@@ -72,6 +85,12 @@ export interface LeagueTeamView {
   opponentScore: WeeklyScoreRow | null;
   opponentRoster: RosterPlayerRow[];
   standings: StandingsRow[];
+  // Both null unless this is the current week's head-to-head matchup —
+  // see fetchLeagueTeamView's isCurrentHeadToHeadWeek guard. Distinct
+  // from "fetched but empty" (a Map) so the UI can tell "not applicable
+  // here" apart from "applicable, but no data yet".
+  matchupPreview: Map<string, MatchupPreviewRow> | null;
+  fplSheetData: Map<string, FplSheetPlayerRow> | null;
 }
 
 interface LeagueDbRow {
@@ -124,6 +143,20 @@ interface TeamStrengthDbRow {
   best_week_points: number;
   worst_week_points: number;
   starter_points_share: number | null;
+}
+
+interface MatchupPreviewDbRow {
+  external_team_id: string;
+  projected_points: number;
+  starters_missing_projection: number;
+}
+
+interface FplSheetPlayerDbRow {
+  external_player_id: string;
+  difficulty_score: number | null;
+  xgi_per_90: number | null;
+  xgc_per_90: number | null;
+  data_fetched: string;
 }
 
 function fromLeagueRow(row: LeagueDbRow): League {
@@ -190,6 +223,23 @@ function fromTeamStrengthRow(row: TeamStrengthDbRow): TeamStrengthRow {
     bestWeekPoints: row.best_week_points,
     worstWeekPoints: row.worst_week_points,
     starterPointsShare: row.starter_points_share,
+  };
+}
+
+function fromMatchupPreviewRow(row: MatchupPreviewDbRow): MatchupPreviewRow {
+  return {
+    externalTeamId: row.external_team_id,
+    projectedPoints: row.projected_points,
+    startersMissingProjection: row.starters_missing_projection,
+  };
+}
+
+function fromFplSheetPlayerRow(row: FplSheetPlayerDbRow): FplSheetPlayerRow {
+  return {
+    playerExternalId: row.external_player_id,
+    difficultyScore: row.difficulty_score,
+    xgiPer90: row.xgi_per_90,
+    xgcPer90: row.xgc_per_90,
   };
 }
 
@@ -329,6 +379,64 @@ async function fetchTeamStrength(
   return new Map(strengths.map((strength) => [strength.externalTeamId, strength]));
 }
 
+async function fetchMatchupPreview(
+  sourceId: string,
+  externalLeagueId: string,
+  externalTeamIds: string[],
+  week: number
+): Promise<Map<string, MatchupPreviewRow>> {
+  if (externalTeamIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("matchup_preview")
+    .select("external_team_id, projected_points, starters_missing_projection")
+    .eq("source_id", sourceId)
+    .eq("external_league_id", externalLeagueId)
+    .eq("week", week)
+    .in("external_team_id", externalTeamIds);
+
+  if (error) {
+    throw new Error(`warehouse query failed: ${error.message}`);
+  }
+
+  const rows = (data ?? []).map(fromMatchupPreviewRow);
+  return new Map(rows.map((row) => [row.externalTeamId, row]));
+}
+
+// FPL-only (see the design doc's "Fourth data source" section — the
+// sheet only covers Premier League players). Caller is expected to only
+// invoke this for source_id === 'fpl'; a Sleeper external_player_id
+// simply won't match anything here, so this degrades harmlessly rather
+// than needing its own guard.
+async function fetchFplSheetData(playerExternalIds: string[]): Promise<Map<string, FplSheetPlayerRow>> {
+  if (playerExternalIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("fpl_sheet_player_data")
+    .select("external_player_id, difficulty_score, xgi_per_90, xgc_per_90, data_fetched")
+    .in("external_player_id", playerExternalIds)
+    .order("data_fetched", { ascending: false });
+
+  if (error) {
+    throw new Error(`warehouse query failed: ${error.message}`);
+  }
+
+  // Ordered newest-first, so the first row seen per player is already
+  // its latest data_fetched snapshot — later (older) duplicates for the
+  // same player are simply never inserted into the map.
+  const map = new Map<string, FplSheetPlayerRow>();
+  for (const row of (data ?? []).map(fromFplSheetPlayerRow)) {
+    if (!map.has(row.playerExternalId)) {
+      map.set(row.playerExternalId, row);
+    }
+  }
+  return map;
+}
+
 // "Standings" = each team's most recently synced weekly_scores row, not a
 // specific week. For head-to-head leagues every team has full weekly
 // history, so "most recent" naturally means "the current week" — but for
@@ -453,6 +561,25 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     strength: teamStrengths.get(row.team.externalTeamId) ?? null,
   }));
 
+  // Matchup prep (projected score, weak-spot flags, opponent scouting)
+  // only makes sense for the current, in-progress week's head-to-head
+  // matchup — neither platform exposes next week's lineup yet, and a
+  // past week is settled history, not something to "prep" for. See
+  // docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
+  const isCurrentHeadToHeadWeek = week === latestWeek && opponentTeam !== null;
+
+  const matchupPreview = isCurrentHeadToHeadWeek
+    ? await fetchMatchupPreview(
+        league.sourceId,
+        league.externalLeagueId,
+        [myTeam.externalTeamId, opponentTeam!.externalTeamId],
+        week
+      )
+    : null;
+
+  const fplSheetData =
+    isCurrentHeadToHeadWeek && league.sourceId === "fpl" ? await fetchFplSheetData(rosterPlayerIds) : null;
+
   return {
     league,
     week,
@@ -464,5 +591,7 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     opponentScore,
     opponentRoster,
     standings: standingsWithStrength,
+    matchupPreview,
+    fplSheetData,
   };
 }
