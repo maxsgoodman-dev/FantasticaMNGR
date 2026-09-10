@@ -132,25 +132,51 @@ design, including why the FPL classic league only gets full roster detail
 for Max's own entry (the other ~99 are a standings snapshot, not a full
 per-entry weekly pull).
 
-## 4. Analytics / mart layer — **planned** (one piece built standalone)
+## 4. Analytics / mart layer — **partially built**
 
-Derived metrics computed from the warehouse, e.g.:
+Derived metrics computed from the warehouse:
 
-- Consistency score (variance of weekly output)
-- Opportunity / target share, red zone efficiency
-- Matchup-adjusted projections (offense/defense)
-- Trade value and player-vs-player comparisons
-- Team strength/weakness breakdowns, automated trade-opportunity detection
+- Consistency score (variance of weekly output) — **built**:
+  `player_consistency_scores` view
+- Trade value (score + reliability combined) — **built**:
+  `player_trade_value` view (supersedes `player_consistency_scores`'
+  columns for anything that has both)
+- Team strength/weakness breakdown — **built**: `fantasy_team_strength`
+  view
+- Matchup-adjusted projections, win probability, weak-spot/opponent
+  scouting — **built**: see "Matchup prep" below
+- Opportunity / target share, red zone efficiency, automated
+  trade-opportunity detection — **planned**, not started
 
-`services/fpl-planner` is a first, standalone piece of this layer for FPL
-specifically: historical player data (2016-17 → 2026-27, two sources) plus
-a squad/starting-XI optimiser (linear programming via PuLP). It still
-loads its own CSVs in-process rather than reading from the warehouse
-(stage 3) — that CSV archive is FPL-only and season-by-season, a
-different shape from the warehouse's current-snapshot `players` table,
-so merging them is real design work, not a rename. See
-`services/fpl-planner/docs/` for data provenance and the optimiser's
-methodology/known gaps (notably: no fixture-difficulty term yet).
+`services/fpl-planner` is a separate, standalone piece of this layer for
+FPL specifically: historical player data (2016-17 → 2026-27, two
+sources) plus a squad/starting-XI optimiser (linear programming via
+PuLP). It still loads its own CSVs in-process rather than reading from
+the warehouse (stage 3) — that CSV archive is FPL-only and
+season-by-season, a different shape from the warehouse's
+current-snapshot `players` table, so merging them is real design work,
+not a rename. See `services/fpl-planner/docs/` for data provenance and
+the optimiser's methodology/known gaps (notably: no fixture-difficulty
+term yet — see "Matchup prep" below for where fixture difficulty *does*
+now exist, in `apps/web` rather than the optimiser).
+
+### Matchup prep — **built**, Sleeper/FPL only
+
+In-progress-week analysis: projected score, win probability, roster
+weak-spot flags, opponent scouting. Two new warehouse tables feed it —
+`player_projections` (platform-wide, week-scoped; FPL's `ep_this` field
+from `bootstrap-static`, Sleeper's dedicated `/projections/nfl/{season}/
+{week}` endpoint) and `fpl_sheet_player_data` (a third-party community
+Google Sheet, FPL-only, see its own provenance/attribution note in
+`docs/superpowers/specs/2026-09-10-matchup-prep-design.md`) — plus a
+`matchup_preview` mart view joining current-week starters against their
+projections. ESPN has no per-player projection endpoint reachable
+without a league-scoped call, and no ESPN league has league-scoped sync
+built at all (see stage 3a), so this only applies to Sleeper and FPL
+leagues. Deliberately scoped to the *current* week, not a future one —
+neither platform reliably exposes next week's set lineup before it
+locks, so "prep" here means checking mid-week, before that week's games
+finish, not before the matchup starts.
 
 ## 5. Dashboard UI — **reads from the warehouse** (both sports)
 
