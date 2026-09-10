@@ -20,6 +20,7 @@ import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.league_models import LeagueSyncResult
+from fantasy_ingest.sources.fpl_community_sheet import fetch_fpl_sheet_data
 
 
 def _client() -> httpx.Client:
@@ -277,6 +278,31 @@ def sync_all_leagues(
     return results
 
 
+def sync_fpl_sheet(client: httpx.Client | None = None) -> dict[str, int]:
+    """Fetch + upsert the community FPL sheet's Data tab.
+
+    Same PostgREST upsert pattern as everything else, targeting
+    `fpl_sheet_player_data` on `(external_player_id, data_fetched)` — a
+    rerun on the same UTC day is always a no-op update, not a duplicate
+    row, even if the scheduled sync runs multiple times before the
+    sheet's own next daily refresh.
+    """
+    owns_client = client is None
+    client = client or _client()
+    try:
+        rows = fetch_fpl_sheet_data()
+        if rows:
+            response = client.post(
+                "/fpl_sheet_player_data?on_conflict=external_player_id,data_fetched", json=rows
+            )
+            response.raise_for_status()
+    finally:
+        if owns_client:
+            client.close()
+
+    return {"fpl_sheet_rows": len(rows)}
+
+
 def _sync_projections_for(source: str, week_fn: Callable[[], int], adapter: FantasySourceAdapter) -> None:
     # ESPN has no fetch_projections override, so it's simply never passed
     # here — no NotImplementedError to catch, unlike sync_all's per-adapter
@@ -309,6 +335,12 @@ def main() -> None:
     # docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
     _sync_projections_for("fpl", fpl.current_gameweek, fpl)
     _sync_projections_for("sleeper", sleeper.current_week, sleeper)
+
+    try:
+        sheet_result = sync_fpl_sheet()
+        print(f"fpl-community-sheet: {sheet_result['fpl_sheet_rows']} rows")
+    except Exception as error:  # noqa: BLE001 - a bad sheet pull must not block everything else
+        print(f"fpl-community-sheet: FAILED — {error}")
 
 
 if __name__ == "__main__":

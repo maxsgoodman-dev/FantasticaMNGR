@@ -4,7 +4,14 @@ import pytest
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, PlayerProjection, Team
-from fantasy_ingest.warehouse import sync_adapter, sync_all, sync_all_leagues, sync_league_data, sync_projections
+from fantasy_ingest.warehouse import (
+    sync_adapter,
+    sync_all,
+    sync_all_leagues,
+    sync_fpl_sheet,
+    sync_league_data,
+    sync_projections,
+)
 
 
 class FakeAdapter(FantasySourceAdapter):
@@ -217,3 +224,57 @@ def test_sync_league_data_always_posts_league_row_but_skips_empty_child_tables(r
     assert counts == {"teams": 0, "weekly_scores": 0, "roster_players": 0}
     paths = [request.url.path for request in recorded_requests]
     assert paths == ["/rest/v1/leagues"]
+
+
+FAKE_SHEET_ROW = {
+    "external_player_id": "101",
+    "web_name": "Test Player",
+    "position": "MID",
+    "team_name": "Test United",
+    "cost_today": 6.0,
+    "form": 5.0,
+    "selection_percent": 10.0,
+    "total_points": 42,
+    "points_per_game": 4.2,
+    "chance_of_playing_next": None,
+    "total_cost_change": 0.0,
+    "cost_change_gw": 0.0,
+    "total_transfers_in": 100,
+    "total_transfers_out": 50,
+    "influence": 10.0,
+    "creativity": 5.0,
+    "threat": 3.0,
+    "ict_index": 1.8,
+    "next_fixtures": [{"gw": 4, "opponent": "ARS", "is_home": True}],
+    "difficulty_score": 14.0,
+    "xgi_per_90": 0.5,
+    "xgc_per_90": 0.3,
+    "defcon": 2.0,
+    "price_change_progress": 12.0,
+    "data_fetched": "2026-09-10",
+}
+
+
+def test_sync_fpl_sheet_posts_with_upsert_semantics(recorded_requests, monkeypatch):
+    monkeypatch.setattr(
+        "fantasy_ingest.warehouse.fetch_fpl_sheet_data", lambda: [FAKE_SHEET_ROW]
+    )
+    client = make_client(recorded_requests)
+
+    counts = sync_fpl_sheet(client=client)
+
+    assert counts == {"fpl_sheet_rows": 1}
+    assert len(recorded_requests) == 1
+    request = recorded_requests[0]
+    assert request.url.path.endswith("/fpl_sheet_player_data")
+    assert "on_conflict=external_player_id,data_fetched" in str(request.url)
+
+
+def test_sync_fpl_sheet_skips_empty_post_when_no_rows(recorded_requests, monkeypatch):
+    monkeypatch.setattr("fantasy_ingest.warehouse.fetch_fpl_sheet_data", lambda: [])
+    client = make_client(recorded_requests)
+
+    counts = sync_fpl_sheet(client=client)
+
+    assert counts == {"fpl_sheet_rows": 0}
+    assert recorded_requests == []
