@@ -92,24 +92,35 @@ Both `sync_all` (warehouse.py) and `fetch_players` (espn.py) follow the
 same rule as a result: one team/adapter failing partway through must
 never lose the data that already succeeded around it.
 
-### Network egress is restricted in this sandbox — including to our own Supabase project
+### Network egress from this sandbox — no longer restricted (re-verified 2026-09-10)
 
-`fantasy.premierleague.com`, `api.sleeper.app`, `site.api.espn.com`, *and*
-this project's own Supabase host (`*.supabase.co`) are all blocked by
-this environment's egress proxy (confirmed via direct `curl`/build
-attempts — the proxy denies the connection, not the upstream service).
-This is why every adapter's tests use hand-written fixtures instead of
-live calls, why `warehouse.py`'s tests use `httpx.MockTransport`, and why
-`apps/web`'s Supabase queries (`lib/players.ts`) have an explicit
+Earlier revisions of this file said `fantasy.premierleague.com`,
+`api.sleeper.app`, `site.api.espn.com`, and this project's own Supabase
+host (`*.supabase.co`) were all blocked by this environment's egress
+proxy. That's no longer true, and re-checking is cheap — don't assume
+either way without testing: `apps/web`'s dev server has repeatedly read
+live Supabase data successfully in this sandbox, and direct `curl` to
+all three platform APIs plus Google Sheets' public CSV export endpoints
+(`docs.google.com/spreadsheets/.../gviz/tq`) returned real 200s while
+building the matchup-prep feature (see
+`docs/superpowers/specs/2026-09-10-matchup-prep-design.md`). If a future
+session hits a *different* blocked host, don't assume this note still
+applies uniformly — re-verify with a direct `curl`, the way this
+correction was made, rather than trusting either the old or new claim
+blindly.
+
+None of this changes the *test* strategy, which was never actually about
+the sandbox restriction: every adapter's tests use hand-written fixtures
+instead of live calls, and `warehouse.py`'s tests use
+`httpx.MockTransport`, because that's the right way to test normalize
+logic regardless of network reachability — a live call in a unit test is
+slow, flaky, and tests the upstream API's uptime instead of this
+codebase. `apps/web`'s Supabase queries (`lib/players.ts`) keep their
 graceful-failure path (`page.tsx` shows a per-section inline error, the
-API route returns `502`) rather than assuming the query succeeds. Don't
-spend time trying to `curl` these hosts directly to "verify" something
-from inside this environment — it will fail regardless of whether the
-code is correct. A normal deployment (Vercel, an unrestricted machine)
-does not have this restriction, and the Supabase MCP tools (`execute_sql`,
-`apply_migration`, etc.) work fine from here even though direct HTTP
-calls to the same project don't — they go through different
-infrastructure than this sandbox's own network stack.
+API route returns `502`) for the same reason production code should
+handle a real query failure, independent of what this sandbox allows.
+The Supabase MCP tools (`execute_sql`, `apply_migration`, etc.) also work
+fine here, same as before.
 
 ### The warehouse (Supabase/Postgres) — `services/ingestion/fantasy_ingest/warehouse.py`
 
