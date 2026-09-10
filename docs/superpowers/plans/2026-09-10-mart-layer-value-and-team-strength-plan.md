@@ -201,11 +201,12 @@ Expected: rows with `weeks_played >= 2`, a non-null `team_name`, and
 `starter_points_share` either a number in `[0, 1]` or `null` (only
 `null` when that team has no synced `roster_players` rows at all — see
 design doc's note on FPL league `740`'s uneven roster coverage). As of
-2026-09-10, real synced data puts this at 20 rows from FPL h2h league
-`401057` (the only league where every team currently has 2+ weeks
-synced) — count and specific values will grow as more weeks sync via
-`.github/workflows/sync.yml`; the shape and constraints are what to
-check.
+2026-09-10, real synced data puts this at 21 total qualifying rows: 20
+from FPL h2h league `401057` (every team there has 2+ weeks synced) plus
+1 team from FPL classic league `740` that happens to already have 3
+weeks synced ahead of the rest of that league — count and specific
+values will grow as more weeks sync via `.github/workflows/sync.yml`;
+the shape and constraints are what to check.
 
 ```sql
 select count(*) as total_rows,
