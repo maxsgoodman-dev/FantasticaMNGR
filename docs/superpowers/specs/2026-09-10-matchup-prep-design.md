@@ -151,6 +151,118 @@ league is head-to-head with an opponent:
   renders — the page stays exactly as it is today (actual scores,
   no projection noise on settled history).
 
+## Fourth data source: the community FPL sheet
+
+Mid-design, the user asked to ingest and live-track a specific
+third-party Google Sheet as an FPL data source:
+`https://docs.google.com/spreadsheets/d/1HcQsj3aVbvlak135JK_akFxQ68hG6ioV2HRtOpr-6JM`
+("FPL Data & Planner — 2026/2027", maintained by a community author,
+auto-refreshed daily at 5 AM GMT from the official FPL site). Investigated
+and folded into this same slice since it directly enriches the weak-spot
+and opponent-scouting work above with real signal (fixture difficulty,
+underlying xG rates, DefCon) neither the official FPL nor Sleeper APIs
+expose.
+
+**Access mechanism (verified live):** the sheet is publicly readable —
+its `gviz` CSV export endpoint returns real data with no auth, e.g.:
+
+```
+https://docs.google.com/spreadsheets/d/1HcQsj3aVbvlak135JK_akFxQ68hG6ioV2HRtOpr-6JM/gviz/tq?tqx=out:csv&sheet=Data
+```
+
+(`sheet=<tab name>` is more robust than a `gid=`, since gids aren't
+easily discoverable without loading the full edit-mode page). This means
+scheduled ingestion (GitHub Actions, same as every other sync) needs no
+service-account credentials — just an HTTP GET, consistent with how
+every other adapter in this repo works.
+
+**Which tabs, and why only one:** the file has 9 tabs. Only **Data** (653
+players × 52 columns) is a clean tabular structure. The other 8
+(Insights, Transfer Picks, Top 100 Managers ×3, Team Form, Fixture
+Difficulty, Price Changes) are prose-formatted "dashboard" layouts built
+*from* Data by the sheet's own formulas — parsing them reliably would
+mean reverse-engineering free-form layouts for numbers Data already
+contains in raw form (e.g. Data's own `Difficulty Score` and `Price
+change progress` columns already back the Fixture Difficulty and Price
+Changes dashboards). Scoping v1 to the Data tab only.
+
+**Schema gotcha:** Data's 52 columns include a duplicate block at
+positions 43–47 (`Cost Today`, `Total Cost Change`, `Cost Change GW`,
+`Position`, `Team` again) — a spreadsheet-internal helper block feeding
+the later xG/DefCon columns, in a different format (e.g. column 43's
+`Cost Today` is `60`, tenths-of-a-pound like our own `players.price`
+storage elsewhere; column 4's is the display string `£6.00`). Taking the
+first (display-string) occurrence for identity/display fields and
+ignoring the redundant second block entirely — nothing in it isn't
+already captured.
+
+**`Player ID` = FPL's own element id** (same id space
+`FPLAdapter.fetch_players` already uses for `players.external_id` where
+`source_id='fpl'`) — confirmed by cross-referencing row 2 (`Player ID=1,
+David, Raya`) against the live FPL API. This table joins cleanly against
+the existing `players` table without any new identity-resolution work.
+
+**New table: `fpl_sheet_player_data`** — one row per `(external_player_id,
+data_fetched)`, source-tagged (not folded into `player_projections` or
+`players`, since this is a fundamentally different — community-curated,
+not official-API — data source with its own refresh cadence and its own
+gotchas):
+
+```sql
+create table public.fpl_sheet_player_data (
+  id bigint generated always as identity primary key,
+  external_player_id text not null,   -- FPL element id, joins players.external_id where source_id='fpl'
+  web_name text not null,
+  position text not null,
+  team_name text not null,
+  cost_today numeric not null,
+  form numeric,
+  selection_percent numeric,
+  total_points integer not null default 0,
+  points_per_game numeric,
+  chance_of_playing_next integer,
+  total_cost_change numeric,
+  cost_change_gw numeric,
+  total_transfers_in integer,
+  total_transfers_out integer,
+  influence numeric,
+  creativity numeric,
+  threat numeric,
+  ict_index numeric,
+  next_fixtures jsonb not null default '[]',  -- [{gw, opponent, is_home}, ...] parsed from the GW4..GW9 columns
+  difficulty_score numeric,       -- lower = easier upcoming run, per the sheet's own scale
+  xgi_per_90 numeric,             -- expected goal involvement / 90 (attacking)
+  xgc_per_90 numeric,             -- expected goals conceded / 90 (defensive)
+  defcon numeric,                 -- defensive contribution metric (2026-27 scoring rule)
+  price_change_progress numeric,  -- % progress toward next price rise/fall
+  data_fetched date not null,     -- the sheet's own "Data Fetched" date, not our sync time
+  source text not null default 'fpl-community-sheet',
+  synced_at timestamptz not null default now(),
+  unique (external_player_id, data_fetched)
+);
+-- RLS: public SELECT, no write policy — same as every other warehouse table.
+```
+
+**Ingestion:** a new lightweight module (not a full `FantasySourceAdapter`
+— this isn't a platform adapter, it's a single CSV pull), e.g.
+`fantasy_ingest/sources/fpl_community_sheet.py`, with the same
+fetch/normalize split every adapter already follows: `_fetch_csv()` (the
+gviz GET) and `_normalize_rows(csv_text)` (parses `£6.00` → `6.0`,
+`"428,001"`-style large ints, and the `GW4`..`GW9` opponent-code columns
+like `"SUN (A)"` into `next_fixtures`). Synced via a new
+`warehouse.sync_fpl_sheet()`, upserting on `(external_player_id,
+data_fetched)` — same PostgREST pattern as everything else. Added to
+`sync.yml` on the existing schedule (the sheet itself only refreshes
+once daily at 5 AM GMT, so syncing more often than that gains nothing).
+
+**Attribution:** this is someone else's community-maintained,
+publicly-shared derived dataset, not official FPL data — the sheet
+itself is explicitly built for public reuse (it links its own feedback
+form and "get in touch"). Recorded here, and worth a one-line credit
+somewhere visible if this data surfaces in the UI (e.g. a footnote on
+whatever component renders `difficulty_score`/`xgi_per_90`), not
+presented as our own.
+
 ## Also fixing: stale network-egress note
 
 `CLAUDE.md`'s "Network egress is restricted in this sandbox" section is
