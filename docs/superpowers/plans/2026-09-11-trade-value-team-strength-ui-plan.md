@@ -1,6 +1,6 @@
 # Trade Value & Team Strength UI Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Surface `player_trade_value` (`supabase/migrations/0003_player_trade_value_view.sql`)
 as a new "Trade Value" column on the per-league team-view roster table, and
@@ -26,7 +26,7 @@ anon-key client (`apps/web/lib/supabase.ts`), TypeScript, Tailwind.
 **Files:**
 - Edit: `apps/web/lib/leagues.ts`
 
-- [ ] **Step 1: Rename `ConsistencyScoreRow` → `PlayerValueRow`, add `tradeValue`**
+- [x] **Step 1: Rename `ConsistencyScoreRow` → `PlayerValueRow`, add `tradeValue`**
 
 ```ts
 export interface PlayerValueRow {
@@ -39,7 +39,7 @@ export interface PlayerValueRow {
 }
 ```
 
-- [ ] **Step 2: Rename `ConsistencyScoreDbRow` → `PlayerValueDbRow`, add `trade_value`**
+- [x] **Step 2: Rename `ConsistencyScoreDbRow` → `PlayerValueDbRow`, add `trade_value`**
 
 ```ts
 interface PlayerValueDbRow {
@@ -52,7 +52,7 @@ interface PlayerValueDbRow {
 }
 ```
 
-- [ ] **Step 3: Rename `fromConsistencyScoreRow` → `fromPlayerValueRow`, map `tradeValue`**
+- [x] **Step 3: Rename `fromConsistencyScoreRow` → `fromPlayerValueRow`, map `tradeValue`**
 
 ```ts
 function fromPlayerValueRow(row: PlayerValueDbRow): PlayerValueRow {
@@ -67,12 +67,12 @@ function fromPlayerValueRow(row: PlayerValueDbRow): PlayerValueRow {
 }
 ```
 
-- [ ] **Step 4: Rename field on `RosterPlayerRow`: `consistency` → `playerValue`, typed `PlayerValueRow | null`**
+- [x] **Step 4: Rename field on `RosterPlayerRow`: `consistency` → `playerValue`, typed `PlayerValueRow | null`**
 
 Update `fromRosterPlayerRow` to set `playerValue: null` (still filled in
 separately, later, from a different query).
 
-- [ ] **Step 5: Rename `fetchConsistencyScores` → `fetchPlayerValues`, query `player_trade_value`**
+- [x] **Step 5: Rename `fetchConsistencyScores` → `fetchPlayerValues`, query `player_trade_value`**
 
 ```ts
 export async function fetchPlayerValues(
@@ -112,7 +112,7 @@ updated in Task 2).
 **Files:**
 - Edit: `apps/web/lib/leagues.ts`
 
-- [ ] **Step 1: Add `TeamStrengthRow`/`TeamStrengthDbRow`/`fromTeamStrengthRow`**
+- [x] **Step 1: Add `TeamStrengthRow`/`TeamStrengthDbRow`/`fromTeamStrengthRow`**
 
 ```ts
 export interface TeamStrengthRow {
@@ -148,7 +148,7 @@ function fromTeamStrengthRow(row: TeamStrengthDbRow): TeamStrengthRow {
 }
 ```
 
-- [ ] **Step 2: Add `fetchTeamStrength` (internal, not exported — mirrors `fetchTeams`/`fetchWeeklyScoresForTeam` visibility)**
+- [x] **Step 2: Add `fetchTeamStrength` (internal, not exported — mirrors `fetchTeams`/`fetchWeeklyScoresForTeam` visibility)**
 
 ```ts
 async function fetchTeamStrength(
@@ -178,7 +178,7 @@ async function fetchTeamStrength(
 }
 ```
 
-- [ ] **Step 3: Add `strength: TeamStrengthRow | null` to `StandingsRow`**
+- [x] **Step 3: Add `strength: TeamStrengthRow | null` to `StandingsRow`**
 
 ```ts
 export interface StandingsRow {
@@ -199,7 +199,7 @@ pass right after calling `fetchStandings` in `fetchLeagueTeamView` (below)
 how roster fetching and consistency/value attachment are already two
 separate steps in this file.
 
-- [ ] **Step 4: In `fetchLeagueTeamView`, rename the consistency-attachment block to use `fetchPlayerValues`/`playerValue`**
+- [x] **Step 4: In `fetchLeagueTeamView`, rename the consistency-attachment block to use `fetchPlayerValues`/`playerValue`**
 
 Replace:
 
@@ -230,7 +230,7 @@ myRoster = withPlayerValue(myRoster);
 opponentRoster = withPlayerValue(opponentRoster);
 ```
 
-- [ ] **Step 5: After `const standings = await fetchStandings(...)`, batch-fetch and attach team strength**
+- [x] **Step 5: After `const standings = await fetchStandings(...)`, batch-fetch and attach team strength**
 
 ```ts
 const teamStrengths = await fetchTeamStrength(
@@ -260,7 +260,7 @@ query is the only net-new round trip).
 **Files:**
 - Edit: `apps/web/app/leagues/[leagueId]/page.tsx`
 
-- [ ] **Step 1: Update imports and `RosterRowView`**
+- [x] **Step 1: Update imports and `RosterRowView`**
 
 ```ts
 import {
@@ -280,7 +280,7 @@ interface RosterRowView {
 }
 ```
 
-- [ ] **Step 2: Rename `formatConsistency`/`consistencyTitle` params to `PlayerValueRow`, add `formatTradeValue`**
+- [x] **Step 2: Rename `formatConsistency`/`consistencyTitle` params to `PlayerValueRow`, add `formatTradeValue`**
 
 ```ts
 function formatConsistency(value: PlayerValueRow | null): string {
@@ -303,7 +303,7 @@ Note `formatTradeValue` checks `value == null`, not
 null when the row exists (see design doc's missing-data case 2: an
 `avg_points = 0` row still yields a real `trade_value = 0`).
 
-- [ ] **Step 3: Update `TeamPanel`'s table — rename the "Consistency" cell's data source to `player.playerValue`, add a "Trade Value" header + cell right after it**
+- [x] **Step 3: Update `TeamPanel`'s table — rename the "Consistency" cell's data source to `player.playerValue`, add a "Trade Value" header + cell right after it**
 
 ```tsx
 <Th title="Coefficient of variation — lower means steadier week-to-week output">
@@ -323,7 +323,7 @@ null when the row exists (see design doc's missing-data case 2: an
 </Td>
 ```
 
-- [ ] **Step 4: Add a `formatShare` helper and team-strength columns to the Standings table**
+- [x] **Step 4: Add a `formatShare` helper and team-strength columns to the Standings table**
 
 ```ts
 function formatShare(share: number | null): string {
@@ -355,7 +355,7 @@ Body cell — append after the existing Points `<Td>`, using `row.strength`:
 <Td className="text-ink-muted">{formatShare(row.strength?.starterPointsShare ?? null)}</Td>
 ```
 
-- [ ] **Step 5: Confirm `TeamPanel`'s callers pass the new field through**
+- [x] **Step 5: Confirm `TeamPanel`'s callers pass the new field through**
 
 `myRoster`/`opponentRoster` from `fetchLeagueTeamView` already carry
 `playerValue` after Task 2; `RosterPlayerRow` is structurally compatible
@@ -366,7 +366,7 @@ changes needed at `<TeamPanel roster={myRoster} .../>`.
 
 ### Task 4: Verify
 
-- [ ] **Step 1: Type-check**
+- [x] **Step 1: Type-check**
 
 ```bash
 cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json
@@ -374,7 +374,7 @@ cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json
 
 Expected: no output.
 
-- [ ] **Step 2: Run the dev server and visually confirm**
+- [x] **Step 2: Run the dev server and visually confirm**
 
 Reuse `.claude/launch.json`'s `web-dev` config if present at the repo root;
 otherwise run `npm run dev -p <alternate-port>` directly and `navigate` the
@@ -390,11 +390,11 @@ Confirm:
 
 Screenshot as evidence.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/lib/leagues.ts apps/web/app/leagues/[leagueId]/page.tsx
 git commit -m "Surface player trade value and fantasy team strength on the team-view page"
 ```
 
-- [ ] **Step 4: Mark this plan's checkboxes complete in a follow-up commit**
+- [x] **Step 4: Mark this plan's checkboxes complete in a follow-up commit**
