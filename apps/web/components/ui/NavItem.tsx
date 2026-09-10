@@ -15,10 +15,10 @@ export default function NavItem({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm transition-colors ${
+      className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-accent bg-accent/10 text-accent"
-          : "border-transparent text-ink-muted hover:border-border-hover hover:bg-surface-hover hover:text-ink-primary"
+          ? "bg-accent text-black shadow-card"
+          : "text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
       }`}
     >
       {icon}

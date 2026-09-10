@@ -2,6 +2,7 @@ import { fetchTopPlayers, type WarehousePlayer } from "@/lib/players";
 import Card from "@/components/ui/Card";
 import SectionHeader from "@/components/ui/SectionHeader";
 import Badge from "@/components/ui/Badge";
+import Avatar from "@/components/ui/Avatar";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 
 interface SportSection {
@@ -84,7 +85,12 @@ export default async function PlayersPage() {
                   <Tbody>
                     {section.players.map((player) => (
                       <Tr key={`${player.sourceId}-${player.externalId}`}>
-                        <Td className="font-medium">{player.name}</Td>
+                        <Td className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Avatar name={player.name} size="sm" />
+                            {player.name}
+                          </div>
+                        </Td>
                         <Td className="text-ink-muted">{player.team ?? "—"}</Td>
                         <Td>{player.position ? <Badge>{player.position}</Badge> : "—"}</Td>
                         <Td className="text-ink-faint">{player.sourceId}</Td>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import SidebarNav from "@/components/SidebarNav";
 import NavItem from "@/components/ui/NavItem";
 import { fetchLeagues, type League } from "@/lib/leagues";
@@ -15,11 +14,6 @@ export default async function Sidebar() {
 
   return (
     <aside className="w-64 shrink-0 border-r border-border bg-canvas p-6">
-      <Link href="/" className="mb-8 flex items-center gap-2 text-sm font-bold tracking-tight text-ink-primary">
-        <span className="inline-block h-2.5 w-2.5 rounded-sm bg-accent" />
-        Fantasy Analytics
-      </Link>
-
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">Leagues</h2>
 
       {error ? (

@@ -46,6 +46,7 @@ export interface StandingsRow {
   team: FantasyTeam;
   week: number;
   points: number;
+  previousPoints: number | null;
 }
 
 export interface LeagueTeamView {
@@ -290,8 +291,15 @@ async function fetchStandings(
   }
 
   const teamsById = new Map(teams.map((team) => [team.externalTeamId, team]));
+  // `data` is ordered by week ascending, so the last two rows seen per team
+  // (as we walk it in order) are that team's latest and previous weeks.
   const latestByTeam = new Map<string, WeeklyScoreDbRow>();
+  const previousByTeam = new Map<string, WeeklyScoreDbRow>();
   for (const row of data ?? []) {
+    const existingLatest = latestByTeam.get(row.external_team_id);
+    if (existingLatest) {
+      previousByTeam.set(row.external_team_id, existingLatest);
+    }
     latestByTeam.set(row.external_team_id, row);
   }
 
@@ -299,7 +307,13 @@ async function fetchStandings(
   for (const row of latestByTeam.values()) {
     const team = teamsById.get(row.external_team_id);
     if (team) {
-      standings.push({ team, week: row.week, points: row.points });
+      const previous = previousByTeam.get(row.external_team_id);
+      standings.push({
+        team,
+        week: row.week,
+        points: row.points,
+        previousPoints: previous?.points ?? null,
+      });
     }
   }
 

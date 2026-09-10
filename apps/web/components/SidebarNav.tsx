@@ -24,8 +24,9 @@ export default function SidebarNav({ leagues }: { leagues: League[] }) {
   const pathname = usePathname();
   const grouped = groupBySport(leagues);
   const sportIds = Array.from(grouped.keys());
-  const [activeSport, setActiveSport] = useState<string | undefined>(sportIds[0]);
-  const visibleSportId = activeSport && grouped.has(activeSport) ? activeSport : sportIds[0];
+  const currentLeagueSport = leagues.find((league) => pathname === `/leagues/${league.id}`)?.sportId;
+  const [activeSport, setActiveSport] = useState<string | undefined>(undefined);
+  const visibleSportId = activeSport ?? currentLeagueSport ?? sportIds[0];
   const visibleLeagues = visibleSportId ? grouped.get(visibleSportId) ?? [] : [];
 
   return (
