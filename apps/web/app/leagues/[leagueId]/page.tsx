@@ -1,8 +1,22 @@
 import Link from "next/link";
-import { fetchLeagueTeamView } from "@/lib/leagues";
+import { fetchLeagueTeamView, type ConsistencyScoreRow } from "@/lib/leagues";
 
 function formatPoints(points: number | null): string {
   return points === null ? "—" : points.toFixed(1);
+}
+
+// Lower coefficient of variation = steadier week-to-week output. Dashes for
+// both "no view row" (fewer than 2 weeks recorded, e.g. a player who just
+// joined the roster) and "row exists but avg_points is 0" (ratio undefined)
+// — see docs/superpowers/specs/2026-09-10-consistency-score-ui-design.md.
+function formatConsistency(score: ConsistencyScoreRow | null): string {
+  return score?.coefficientOfVariation == null ? "—" : score.coefficientOfVariation.toFixed(2);
+}
+
+function consistencyTitle(score: ConsistencyScoreRow | null): string | undefined {
+  return score
+    ? `avg ${score.avgPoints} ± ${score.pointsStddev} pts over ${score.weeksPlayed} weeks`
+    : undefined;
 }
 
 interface RosterRowView {
@@ -10,6 +24,7 @@ interface RosterRowView {
   playerName: string;
   isStarter: boolean;
   points: number;
+  consistency: ConsistencyScoreRow | null;
 }
 
 function TeamPanel({
@@ -36,6 +51,9 @@ function TeamPanel({
             <tr>
               <th className="py-1 font-medium">Player</th>
               <th className="py-1 font-medium">Points</th>
+              <th className="py-1 font-medium" title="Coefficient of variation — lower means steadier week-to-week output">
+                Consistency
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -43,6 +61,9 @@ function TeamPanel({
               <tr key={player.playerExternalId} className={player.isStarter ? "" : "opacity-50"}>
                 <td className="py-1 text-slate-200">{player.playerName}</td>
                 <td className="py-1 text-slate-300">{formatPoints(player.points)}</td>
+                <td className="py-1 text-slate-300" title={consistencyTitle(player.consistency)}>
+                  {formatConsistency(player.consistency)}
+                </td>
               </tr>
             ))}
           </tbody>
