@@ -1,11 +1,18 @@
 import Link from "next/link";
-import { fetchLeagueTeamView, type PlayerValueRow, type RosterPlayerRow, type StandingsRow } from "@/lib/leagues";
+import {
+  fetchLeagueTeamView,
+  type FplSheetPlayerRow,
+  type PlayerValueRow,
+  type RosterPlayerRow,
+  type StandingsRow,
+} from "@/lib/leagues";
 import Card from "@/components/ui/Card";
 import StatTile from "@/components/ui/StatTile";
 import Badge from "@/components/ui/Badge";
 import Avatar from "@/components/ui/Avatar";
 import SectionHeader from "@/components/ui/SectionHeader";
 import TeamCompareChart from "@/components/ui/TeamCompareChart";
+import MatchupPrepCard, { type ToughFixture, type WeakSpot } from "@/components/ui/MatchupPrepCard";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 
 function formatPoints(points: number | null): string {
@@ -62,6 +69,62 @@ function steadiness(roster: RosterPlayerRow[]): number {
   if (cvs.length === 0) return 0;
   const avgCv = cvs.reduce((sum, cv) => sum + cv, 0) / cvs.length;
   return Math.max(0, 100 - Math.min(avgCv, 1) * 100);
+}
+
+// Win probability from projected point differential, normalized by the
+// larger of the two projections so it behaves sensibly across very
+// different scales (a 100+ point Sleeper week vs. a 40-60 point FPL
+// week) rather than needing a sport-specific constant. This is a fixed
+// logistic curve, not a fitted statistical model — a known v1
+// simplification, documented in
+// docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
+function computeWinProbability(myProjected: number, opponentProjected: number): number {
+  const scale = Math.max(myProjected, opponentProjected, 1);
+  const relativeDiff = (myProjected - opponentProjected) / scale;
+  const steepness = 4;
+  return 1 / (1 + Math.exp(-steepness * relativeDiff));
+}
+
+// Bottom quartile of starters by trade value (min 1) — players with both
+// low scoring and low reliability, using data already fetched for the
+// roster table. Starters with no trade-value row yet (too few recorded
+// weeks) are excluded rather than treated as the weakest.
+function computeWeakSpots(roster: RosterRowView[]): WeakSpot[] {
+  const rated = roster.filter(
+    (player): player is RosterRowView & { playerValue: PlayerValueRow } =>
+      player.isStarter && player.playerValue != null
+  );
+  if (rated.length === 0) return [];
+  const sorted = [...rated].sort((a, b) => a.playerValue.tradeValue - b.playerValue.tradeValue);
+  const count = Math.max(1, Math.ceil(sorted.length / 4));
+  return sorted.slice(0, count).map((player) => ({
+    playerName: player.playerName,
+    tradeValue: player.playerValue.tradeValue,
+  }));
+}
+
+// The community sheet's difficulty_score is a next-6-gameweek scale
+// where lower means easier — 15 is a fixed heuristic cutoff based on the
+// handful of real scores seen while building this (Arsenal 14, Aston
+// Villa 16, Bournemouth 17), not a computed league-wide median (this
+// page doesn't have every team's score loaded). Documented as a v1
+// simplification alongside the win-probability curve above.
+const TOUGH_FIXTURE_THRESHOLD = 15;
+
+function computeToughFixtures(
+  roster: RosterRowView[],
+  fplSheetData: Map<string, FplSheetPlayerRow> | null
+): ToughFixture[] {
+  if (!fplSheetData) return [];
+  const fixtures: ToughFixture[] = [];
+  for (const player of roster) {
+    if (!player.isStarter) continue;
+    const sheetRow = fplSheetData.get(player.playerExternalId);
+    if (sheetRow?.difficultyScore != null && sheetRow.difficultyScore > TOUGH_FIXTURE_THRESHOLD) {
+      fixtures.push({ playerName: player.playerName, difficultyScore: sheetRow.difficultyScore });
+    }
+  }
+  return fixtures;
 }
 
 interface RosterRowView {
@@ -197,12 +260,27 @@ export default async function LeagueTeamViewPage({
     opponentScore,
     opponentRoster,
     standings,
+    matchupPreview,
+    fplSheetData,
   } = view;
 
   const myPoints = myScore?.points ?? null;
   const opponentPoints = opponentScore?.points ?? null;
   const result = computeResult(myPoints, opponentPoints);
   const isCurrentWeek = week === latestWeek;
+
+  const myProjected = matchupPreview?.get(myTeam.externalTeamId)?.projectedPoints ?? null;
+  const opponentProjected = opponentTeam
+    ? matchupPreview?.get(opponentTeam.externalTeamId)?.projectedPoints ?? null
+    : null;
+  const winProbability =
+    myProjected != null && opponentProjected != null ? computeWinProbability(myProjected, opponentProjected) : null;
+
+  const weakSpots = matchupPreview ? computeWeakSpots(myRoster) : [];
+  const toughFixtures = computeToughFixtures(myRoster, fplSheetData);
+  const opponentStrength = opponentTeam
+    ? standings.find((row) => row.team.externalTeamId === opponentTeam.externalTeamId)?.strength ?? null
+    : null;
 
   return (
     <div>
@@ -246,6 +324,27 @@ export default async function LeagueTeamViewPage({
           <StatTile label="Opponent Score" value={formatPoints(opponentPoints)} />
           <StatTile label="Result" value={result ?? "—"} tone={result ? RESULT_TONE[result] : "default"} />
         </div>
+      )}
+
+      {opponentTeam && myProjected != null && opponentProjected != null && winProbability != null && (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatTile label="My Projected" value={myProjected.toFixed(1)} sublabel="rest of this week" />
+          <StatTile label="Opponent Projected" value={opponentProjected.toFixed(1)} sublabel="rest of this week" />
+          <StatTile
+            label="Win Probability"
+            value={`${Math.round(winProbability * 100)}%`}
+            tone={winProbability >= 0.5 ? "win" : "loss"}
+          />
+        </div>
+      )}
+
+      {opponentTeam && matchupPreview && (
+        <MatchupPrepCard
+          opponentTeamName={opponentTeam.teamName}
+          weakSpots={weakSpots}
+          opponentStrength={opponentStrength}
+          toughFixtures={toughFixtures}
+        />
       )}
 
       {opponentTeam && (
