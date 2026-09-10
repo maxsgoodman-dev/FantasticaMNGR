@@ -1,5 +1,6 @@
 import SidebarNav from "@/components/SidebarNav";
-import NavItem from "@/components/ui/NavItem";
+import SidebarShell from "@/components/SidebarShell";
+import PlayersNavLink from "@/components/PlayersNavLink";
 import { fetchLeagues, type League } from "@/lib/leagues";
 
 export default async function Sidebar() {
@@ -13,7 +14,7 @@ export default async function Sidebar() {
   }
 
   return (
-    <aside className="w-64 shrink-0 border-r border-border bg-canvas p-6">
+    <SidebarShell>
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">Leagues</h2>
 
       {error ? (
@@ -28,18 +29,8 @@ export default async function Sidebar() {
       )}
 
       <div className="mt-8 border-t border-border pt-4">
-        <NavItem
-          href="/players"
-          icon={
-            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-              <path d="M1.5 6h13M6 6v8.5" />
-            </svg>
-          }
-        >
-          Browse all players
-        </NavItem>
+        <PlayersNavLink />
       </div>
-    </aside>
+    </SidebarShell>
   );
 }

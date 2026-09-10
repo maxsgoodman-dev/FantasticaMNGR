@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import NavItem from "@/components/ui/NavItem";
+import { useSidebar } from "@/components/SidebarContext";
 import type { League } from "@/lib/leagues";
 
 const SPORT_LABELS: Record<string, string> = {
@@ -22,6 +23,7 @@ function groupBySport(leagues: League[]): Map<string, League[]> {
 
 export default function SidebarNav({ leagues }: { leagues: League[] }) {
   const pathname = usePathname();
+  const { close } = useSidebar();
   const grouped = groupBySport(leagues);
   const sportIds = Array.from(grouped.keys());
   const currentLeagueSport = leagues.find((league) => pathname === `/leagues/${league.id}`)?.sportId;
@@ -50,7 +52,12 @@ export default function SidebarNav({ leagues }: { leagues: League[] }) {
 
       <div className="space-y-1">
         {visibleLeagues.map((league) => (
-          <NavItem key={league.id} href={`/leagues/${league.id}`} active={pathname === `/leagues/${league.id}`}>
+          <NavItem
+            key={league.id}
+            href={`/leagues/${league.id}`}
+            active={pathname === `/leagues/${league.id}`}
+            onClick={close}
+          >
             {league.name}
           </NavItem>
         ))}

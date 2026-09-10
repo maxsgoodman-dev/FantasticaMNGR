@@ -223,7 +223,7 @@ export default async function LeagueTeamViewPage({
       />
 
       {opponentTeam && (
-        <div className="mt-6 grid grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatTile label="My Score" value={formatPoints(myPoints)} />
           <StatTile label="Opponent Score" value={formatPoints(opponentPoints)} />
           <StatTile label="Result" value={result ?? "—"} tone={result ? RESULT_TONE[result] : "default"} />
@@ -247,7 +247,7 @@ export default async function LeagueTeamViewPage({
         </Card>
       )}
 
-      <div className={`mt-6 grid gap-6 ${opponentTeam ? "md:grid-cols-2" : ""}`}>
+      <div className={`mt-6 grid gap-6 ${opponentTeam ? "lg:grid-cols-2" : ""}`}>
         <TeamPanel teamName={myTeam.teamName} points={myPoints} roster={myRoster} />
         {opponentTeam && (
           <TeamPanel teamName={opponentTeam.teamName} points={opponentPoints} roster={opponentRoster} />
