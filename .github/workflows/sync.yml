@@ -21,7 +21,7 @@ jobs:
       - name: Install fantasy_ingest
         run: pip install -e .
 
-      - name: Sync platform-wide teams/players catalog
+      - name: Sync platform-wide teams/players catalog + current-week projections
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

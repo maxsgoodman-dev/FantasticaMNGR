@@ -87,6 +87,46 @@ def sync_adapter(adapter: FantasySourceAdapter, client: httpx.Client | None = No
     return {"teams": len(team_rows), "players": len(player_rows)}
 
 
+def _projection_rows(adapter: FantasySourceAdapter, week: int) -> list[dict]:
+    return [
+        {
+            "source_id": adapter.source,
+            "sport_id": adapter.sport,
+            "week": week,
+            "external_player_id": projection.player_external_id,
+            "projected_points": projection.projected_points,
+        }
+        for projection in adapter.fetch_projections(week)
+    ]
+
+
+def sync_projections(
+    adapter: FantasySourceAdapter, week: int, client: httpx.Client | None = None
+) -> dict[str, int]:
+    """Fetch one adapter's current-week projections and upsert them.
+
+    Separate from sync_adapter (platform-wide teams/players, no week
+    dimension) since this is a different table with a different natural
+    cadence — a caller discovers `week` itself (FPLAdapter.current_gameweek
+    / SleeperAdapter.current_week) rather than this function guessing it,
+    so each adapter's own current-week logic stays in exactly one place.
+    """
+    owns_client = client is None
+    client = client or _client()
+    try:
+        rows = _projection_rows(adapter, week)
+        if rows:
+            response = client.post(
+                "/player_projections?on_conflict=source_id,sport_id,week,external_player_id", json=rows
+            )
+            response.raise_for_status()
+    finally:
+        if owns_client:
+            client.close()
+
+    return {"projections": len(rows)}
+
+
 def sync_all(adapters: list[FantasySourceAdapter], client: httpx.Client | None = None) -> dict[str, dict]:
     """Sync every adapter, one failure at a time.
 
@@ -237,17 +277,38 @@ def sync_all_leagues(
     return results
 
 
+def _sync_projections_for(source: str, week_fn: Callable[[], int], adapter: FantasySourceAdapter) -> None:
+    # ESPN has no fetch_projections override, so it's simply never passed
+    # here — no NotImplementedError to catch, unlike sync_all's per-adapter
+    # isolation, which does need to catch a raise.
+    try:
+        week = week_fn()
+        result = sync_projections(adapter, week)
+        print(f"{source}: {result['projections']} projections (week {week})")
+    except Exception as error:  # noqa: BLE001 - a bad projections pull must not block the catalog sync
+        print(f"{source}: projections FAILED — {error}")
+
+
 def main() -> None:
     from fantasy_ingest.adapters.espn import ESPNAdapter
     from fantasy_ingest.adapters.fpl import FPLAdapter
     from fantasy_ingest.adapters.sleeper import SleeperAdapter
 
-    results = sync_all([FPLAdapter(), SleeperAdapter(), ESPNAdapter()])
+    fpl = FPLAdapter()
+    sleeper = SleeperAdapter()
+
+    results = sync_all([fpl, sleeper, ESPNAdapter()])
     for source, result in results.items():
         if "error" in result:
             print(f"{source}: FAILED — {result['error']}")
         else:
             print(f"{source}: {result['teams']} teams, {result['players']} players")
+
+    # Projections are FPL/Sleeper-only (ESPN has no per-player projection
+    # endpoint reachable without a league-scoped call) — see
+    # docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
+    _sync_projections_for("fpl", fpl.current_gameweek, fpl)
+    _sync_projections_for("sleeper", sleeper.current_week, sleeper)
 
 
 if __name__ == "__main__":

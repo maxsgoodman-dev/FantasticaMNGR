@@ -3,8 +3,8 @@ import pytest
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
-from fantasy_ingest.models import Player, Team
-from fantasy_ingest.warehouse import sync_adapter, sync_all, sync_all_leagues, sync_league_data
+from fantasy_ingest.models import Player, PlayerProjection, Team
+from fantasy_ingest.warehouse import sync_adapter, sync_all, sync_all_leagues, sync_league_data, sync_projections
 
 
 class FakeAdapter(FantasySourceAdapter):
@@ -84,6 +84,51 @@ def test_sync_adapter_skips_empty_post_when_no_rows(recorded_requests):
     counts = sync_adapter(EmptyAdapter(), client=client)
 
     assert counts == {"teams": 0, "players": 0}
+    assert recorded_requests == []
+
+
+class FakeAdapterWithProjections(FakeAdapter):
+    def fetch_projections(self, week: int) -> list[PlayerProjection]:
+        return [PlayerProjection(player_external_id="101", projected_points=12.5)]
+
+
+def test_sync_projections_posts_with_upsert_semantics(recorded_requests):
+    client = make_client(recorded_requests)
+
+    counts = sync_projections(FakeAdapterWithProjections(), week=3, client=client)
+
+    assert counts == {"projections": 1}
+    assert len(recorded_requests) == 1
+    request = recorded_requests[0]
+    assert request.url.path.endswith("/player_projections")
+    assert "on_conflict=source_id,sport_id,week,external_player_id" in str(request.url)
+
+
+def test_sync_projections_rows_carry_week_and_identity(recorded_requests):
+    import json
+
+    client = make_client(recorded_requests)
+
+    sync_projections(FakeAdapterWithProjections(), week=3, client=client)
+
+    row = json.loads(recorded_requests[0].content)[0]
+    assert row["source_id"] == "testsource"
+    assert row["sport_id"] == "testsport"
+    assert row["week"] == 3
+    assert row["external_player_id"] == "101"
+    assert row["projected_points"] == 12.5
+
+
+def test_sync_projections_skips_empty_post_when_no_rows(recorded_requests):
+    class EmptyProjectionsAdapter(FakeAdapter):
+        def fetch_projections(self, week: int) -> list[PlayerProjection]:
+            return []
+
+    client = make_client(recorded_requests)
+
+    counts = sync_projections(EmptyProjectionsAdapter(), week=3, client=client)
+
+    assert counts == {"projections": 0}
     assert recorded_requests == []
 
 

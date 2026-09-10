@@ -145,6 +145,15 @@ def test_fetch_projections_raises_for_a_week_that_isnt_current():
         adapter.fetch_projections(4)
 
 
+def test_current_gameweek_method_matches_the_module_function():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE)
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    assert adapter.current_gameweek() == 3
+
+
 def test_current_gameweek_is_the_in_progress_or_latest_finished_week():
     assert _current_gameweek({"events": EVENTS_FIXTURE}) == 3
 

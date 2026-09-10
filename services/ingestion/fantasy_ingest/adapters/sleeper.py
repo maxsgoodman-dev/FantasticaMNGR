@@ -169,6 +169,14 @@ class SleeperAdapter(FantasySourceAdapter):
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client or httpx.Client()
 
+    def current_week(self) -> int:
+        """The week `fetch_projections` needs — public so callers (e.g.
+        warehouse.sync_projections) can discover it without a second,
+        duplicate /state/nfl call of their own."""
+        response = self._client.get(STATE_URL)
+        response.raise_for_status()
+        return response.json()["week"]
+
     def fetch_players(self) -> list[Player]:
         response = self._client.get(PLAYERS_URL)
         response.raise_for_status()

@@ -202,6 +202,12 @@ class FPLAdapter(FantasySourceAdapter):
         response.raise_for_status()
         return response.json()
 
+    def current_gameweek(self) -> int:
+        """The gameweek `fetch_projections` needs — public so callers
+        (e.g. warehouse.sync_projections) can discover it without
+        duplicating _current_gameweek's event-parsing logic themselves."""
+        return _current_gameweek(self._fetch_bootstrap_static())
+
     def fetch_players(self) -> list[Player]:
         return _normalize_players(self._fetch_bootstrap_static())
 

@@ -219,6 +219,15 @@ def test_fetch_projections_raises_for_a_week_that_isnt_current():
         adapter.fetch_projections(2)
 
 
+def test_current_week_returns_the_state_endpoints_week():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"week": 1, "season": "2026"})
+
+    adapter = SleeperAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    assert adapter.current_week() == 1
+
+
 def test_fetch_league_data_pulls_teams_and_every_week_so_far():
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
