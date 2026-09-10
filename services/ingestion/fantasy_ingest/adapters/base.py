@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from fantasy_ingest.models import Player, Team
+from fantasy_ingest.models import Player, PlayerProjection, Team
 
 
 class FantasySourceAdapter(ABC):
@@ -23,3 +23,13 @@ class FantasySourceAdapter(ABC):
 
     @abstractmethod
     def fetch_matchups(self) -> list[dict]: ...
+
+    def fetch_projections(self, week: int) -> list[PlayerProjection]:
+        """Per-player projected points for one week, platform-wide.
+
+        Not abstract — same reasoning as fetch_matchups: not every
+        adapter can support this (ESPN has no per-player projection
+        endpoint reachable without a league-scoped call), so the default
+        is an explicit opt-out rather than a forced implementation.
+        """
+        raise NotImplementedError

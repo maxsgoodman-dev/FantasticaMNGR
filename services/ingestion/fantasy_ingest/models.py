@@ -17,3 +17,9 @@ class Team:
     id: str
     name: str
     short_name: str
+
+
+@dataclass
+class PlayerProjection:
+    player_external_id: str
+    projected_points: float
