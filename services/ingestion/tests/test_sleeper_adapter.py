@@ -1,15 +1,26 @@
 import httpx
+import pytest
 
 from fantasy_ingest.adapters.sleeper import (
     NFL_TEAMS,
     SleeperAdapter,
     _normalize_league_teams,
     _normalize_players,
+    _normalize_projections,
     _normalize_teams,
     _normalize_week,
 )
 from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
-from fantasy_ingest.models import Player, Team
+from fantasy_ingest.models import Player, PlayerProjection, Team
+
+PROJECTIONS_FIXTURE = [
+    {"player_id": "4046", "week": 1, "stats": {"pts_ppr": 18.5}},
+    {"player_id": "9999", "week": 1, "stats": {"pts_ppr": 0.0}},
+    # A bye-week / non-projected player: no pts_ppr at all.
+    {"player_id": "1234", "week": 1, "stats": {"pass_yd": 0}},
+    # A record with no stats object whatsoever.
+    {"player_id": "5678", "week": 1},
+]
 
 PLAYERS_FIXTURE = {
     "4046": {
@@ -171,6 +182,41 @@ def test_normalize_week_handles_bye_week_with_no_matchup_id():
 
     assert scores == [WeeklyScore(team_external_id="3", week=1, points=50.0, opponent_external_id=None)]
     assert roster_entries == []
+
+
+def test_normalize_projections_skips_records_with_no_pts_ppr():
+    projections = _normalize_projections(PROJECTIONS_FIXTURE)
+
+    assert projections == [
+        PlayerProjection(player_external_id="4046", projected_points=18.5),
+        PlayerProjection(player_external_id="9999", projected_points=0.0),
+    ]
+
+
+def test_fetch_projections_calls_the_right_url_and_returns_normalized_rows():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/state/nfl"):
+            return httpx.Response(200, json={"week": 1, "season": "2026"})
+        if request.url.path == "/projections/nfl/2026/1":
+            assert request.url.params["season_type"] == "regular"
+            return httpx.Response(200, json=PROJECTIONS_FIXTURE)
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = SleeperAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    projections = adapter.fetch_projections(1)
+
+    assert projections == _normalize_projections(PROJECTIONS_FIXTURE)
+
+
+def test_fetch_projections_raises_for_a_week_that_isnt_current():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"week": 1, "season": "2026"})
+
+    adapter = SleeperAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    with pytest.raises(ValueError, match="current week"):
+        adapter.fetch_projections(2)
 
 
 def test_fetch_league_data_pulls_teams_and_every_week_so_far():

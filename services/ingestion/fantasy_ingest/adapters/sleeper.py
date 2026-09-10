@@ -4,13 +4,14 @@ import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
 from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
-from fantasy_ingest.models import Player, Team
+from fantasy_ingest.models import Player, PlayerProjection, Team
 
 PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
 STATE_URL = "https://api.sleeper.app/v1/state/nfl"
 LEAGUE_USERS_URL = "https://api.sleeper.app/v1/league/{league_id}/users"
 LEAGUE_ROSTERS_URL = "https://api.sleeper.app/v1/league/{league_id}/rosters"
 LEAGUE_MATCHUPS_URL = "https://api.sleeper.app/v1/league/{league_id}/matchups/{week}"
+PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
 
 # Sleeper has no "list all NFL teams" endpoint — the 32 teams are fixed,
 # unlike FPL's mid-season-renumbered club IDs, so this is safe to hardcode.
@@ -80,6 +81,22 @@ def _normalize_players(raw_json: dict) -> list[Player]:
             )
         )
     return players
+
+
+def _normalize_projections(raw_json: list[dict]) -> list[PlayerProjection]:
+    # One call returns every NFL player, not just fantasy-relevant ones —
+    # same "full historical dump" shape as /v1/players/nfl. A record with
+    # no pts_ppr (bye week, inactive, not a scoring position Sleeper
+    # projects) is skipped rather than coerced to 0.0, so "no projection"
+    # stays distinguishable from "projected to score zero".
+    projections = []
+    for record in raw_json:
+        player_id = record.get("player_id")
+        pts_ppr = (record.get("stats") or {}).get("pts_ppr")
+        if player_id is None or pts_ppr is None:
+            continue
+        projections.append(PlayerProjection(player_external_id=str(player_id), projected_points=float(pts_ppr)))
+    return projections
 
 
 def _normalize_league_teams(rosters_json: list[dict], users_json: list[dict], my_user_id: str) -> list[FantasyTeam]:
@@ -164,6 +181,28 @@ class SleeperAdapter(FantasySourceAdapter):
         # Sleeper matchups are league-scoped (GET /league/{league_id}/matchups/{week}),
         # and no league ID is available yet. Not implemented.
         raise NotImplementedError("Sleeper matchups require a league ID")
+
+    def fetch_projections(self, week: int) -> list[PlayerProjection]:
+        """Projected points for every NFL player in the given week.
+
+        `week` must match Sleeper's own current week (same guard as
+        FPLAdapter.fetch_projections) — the projections endpoint will
+        happily return a past or future week's numbers on request, but
+        this adapter only ever wants "now", so a mismatch is a caller
+        bug worth surfacing rather than silently syncing the wrong week.
+        """
+        state_response = self._client.get(STATE_URL)
+        state_response.raise_for_status()
+        state = state_response.json()
+        if week != state["week"]:
+            raise ValueError(f"Sleeper's current week is {state['week']}, not {week}")
+
+        response = self._client.get(
+            PROJECTIONS_URL.format(season=state["season"], week=week),
+            params={"season_type": "regular"},
+        )
+        response.raise_for_status()
+        return _normalize_projections(response.json())
 
     def fetch_league_data(self, league_id: str, my_user_id: str) -> LeagueSyncResult:
         names_by_id = {player.id: player.name for player in self.fetch_players()}
