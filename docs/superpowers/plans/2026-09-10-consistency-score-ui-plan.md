@@ -25,7 +25,7 @@ anon-key client (`apps/web/lib/supabase.ts`), TypeScript, Tailwind.
 **Files:**
 - Edit: `apps/web/lib/leagues.ts`
 
-- [ ] **Step 1: Add the `ConsistencyScoreRow` public interface and `ConsistencyScoreDbRow` internal interface**
+- [x] **Step 1: Add the `ConsistencyScoreRow` public interface and `ConsistencyScoreDbRow` internal interface**
 
 Add near the other row interfaces in `apps/web/lib/leagues.ts`:
 
@@ -47,7 +47,7 @@ interface ConsistencyScoreDbRow {
 }
 ```
 
-- [ ] **Step 2: Add `fromConsistencyScoreRow` and add a `consistency` field to `RosterPlayerRow`**
+- [x] **Step 2: Add `fromConsistencyScoreRow` and add a `consistency` field to `RosterPlayerRow`**
 
 ```ts
 export interface RosterPlayerRow {
@@ -77,7 +77,7 @@ function fromConsistencyScoreRow(row: ConsistencyScoreDbRow): ConsistencyScoreRo
 }
 ```
 
-- [ ] **Step 3: Add `fetchConsistencyScores`**
+- [x] **Step 3: Add `fetchConsistencyScores`**
 
 ```ts
 export async function fetchConsistencyScores(
@@ -115,7 +115,7 @@ until Task 2, but fully typed).
 **Files:**
 - Edit: `apps/web/lib/leagues.ts`
 
-- [ ] **Step 1: After `myRoster` and `opponentRoster` are both fetched, batch-fetch consistency scores for the union of both rosters**
+- [x] **Step 1: After `myRoster` and `opponentRoster` are both fetched, batch-fetch consistency scores for the union of both rosters**
 
 In `fetchLeagueTeamView`, after the `if (league.format === "head_to_head" ...)` block
 (so both `myRoster` and `opponentRoster` are populated), add:
@@ -137,7 +137,7 @@ const withConsistency = (roster: RosterPlayerRow[]): RosterPlayerRow[] =>
   }));
 ```
 
-- [ ] **Step 2: Apply `withConsistency` to both rosters before they're returned**
+- [x] **Step 2: Apply `withConsistency` to both rosters before they're returned**
 
 Change `myRoster` from `const` to `let` (it's reassigned now), and reassign
 both:
@@ -160,7 +160,7 @@ page load (not one per player).
 **Files:**
 - Edit: `apps/web/app/leagues/[leagueId]/page.tsx`
 
-- [ ] **Step 1: Import `ConsistencyScoreRow` and extend `RosterRowView`**
+- [x] **Step 1: Import `ConsistencyScoreRow` and extend `RosterRowView`**
 
 ```ts
 import { fetchLeagueTeamView, type ConsistencyScoreRow } from "@/lib/leagues";
@@ -176,7 +176,7 @@ interface RosterRowView {
 }
 ```
 
-- [ ] **Step 2: Add a `formatConsistency` helper next to the existing `formatPoints`**
+- [x] **Step 2: Add a `formatConsistency` helper next to the existing `formatPoints`**
 
 ```ts
 function formatConsistency(score: ConsistencyScoreRow | null): string {
@@ -190,7 +190,7 @@ function consistencyTitle(score: ConsistencyScoreRow | null): string | undefined
 }
 ```
 
-- [ ] **Step 3: Add the column header and cell in `TeamPanel`'s table**
+- [x] **Step 3: Add the column header and cell in `TeamPanel`'s table**
 
 Header row (next to "Points"):
 
@@ -206,7 +206,7 @@ Body cell (next to the "Points" `<td>`, using the same row's `player`):
 </td>
 ```
 
-- [ ] **Step 4: Confirm `TeamPanel`'s callers pass the new field through**
+- [x] **Step 4: Confirm `TeamPanel`'s callers pass the new field through**
 
 `myRoster`/`opponentRoster` from `fetchLeagueTeamView` already carry
 `consistency` after Task 2, and `RosterPlayerRow` is structurally
@@ -217,7 +217,7 @@ compatible with the extended `RosterRowView`, so no change needed at the
 
 ### Task 4: Verify
 
-- [ ] **Step 1: Type-check**
+- [x] **Step 1: Type-check**
 
 ```bash
 cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json
@@ -225,7 +225,7 @@ cd apps/web && ./node_modules/.bin/tsc --noEmit -p tsconfig.json
 
 Expected: no output.
 
-- [ ] **Step 2: Run the dev server and visually confirm**
+- [x] **Step 2: Run the dev server and visually confirm**
 
 Use `.claude/launch.json`'s `web-dev` config (create it if it doesn't exist,
 pointing `npm --prefix apps/web run dev` at port 3000) and the Browser tool
@@ -234,7 +234,7 @@ to open a real league's team-view page (`/leagues/<id>`). Confirm the new
 without enough weeks) — not a placeholder, not a crash. Screenshot as
 evidence.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/lib/leagues.ts apps/web/app/leagues/[leagueId]/page.tsx
