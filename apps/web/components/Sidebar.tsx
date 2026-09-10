@@ -1,20 +1,7 @@
 import Link from "next/link";
+import SidebarNav from "@/components/SidebarNav";
+import NavItem from "@/components/ui/NavItem";
 import { fetchLeagues, type League } from "@/lib/leagues";
-
-const SPORT_LABELS: Record<string, string> = {
-  nfl: "NFL",
-  "premier-league": "Premier League",
-};
-
-function groupBySport(leagues: League[]): Map<string, League[]> {
-  const grouped = new Map<string, League[]>();
-  for (const league of leagues) {
-    const group = grouped.get(league.sportId) ?? [];
-    group.push(league);
-    grouped.set(league.sportId, group);
-  }
-  return grouped;
-}
 
 export default async function Sidebar() {
   let leagues: League[] = [];
@@ -26,44 +13,38 @@ export default async function Sidebar() {
     error = fetchError instanceof Error ? fetchError.message : "Unknown error querying the warehouse";
   }
 
-  const grouped = groupBySport(leagues);
-
   return (
-    <aside className="w-64 shrink-0 border-r border-slate-800 p-6">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-400">Leagues</h2>
+    <aside className="w-64 shrink-0 border-r border-border bg-canvas p-6">
+      <Link href="/" className="mb-8 flex items-center gap-2 text-sm font-bold tracking-tight text-ink-primary">
+        <span className="inline-block h-2.5 w-2.5 rounded-sm bg-accent" />
+        Fantasy Analytics
+      </Link>
+
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">Leagues</h2>
 
       {error ? (
         <p className="mb-4 text-xs text-red-400">Couldn&apos;t load leagues: {error}</p>
       ) : leagues.length === 0 ? (
-        <p className="mb-4 text-xs text-slate-500">
+        <p className="mb-4 text-xs text-ink-faint">
           No leagues synced yet. Configure league IDs in services/ingestion/.env and run
           python -m fantasy_ingest.sync_leagues.
         </p>
       ) : (
-        Array.from(grouped.entries()).map(([sportId, sportLeagues]) => (
-          <div key={sportId} className="mb-5">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-500">
-              {SPORT_LABELS[sportId] ?? sportId}
-            </h3>
-            <div className="space-y-2">
-              {sportLeagues.map((league) => (
-                <Link
-                  key={league.id}
-                  href={`/leagues/${league.id}`}
-                  className="block rounded-md border border-slate-800 p-3 text-sm text-slate-200 hover:border-slate-600"
-                >
-                  {league.name}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))
+        <SidebarNav leagues={leagues} />
       )}
 
-      <div className="mt-8 border-t border-slate-800 pt-4">
-        <Link href="/players" className="text-xs text-slate-400 hover:text-slate-200">
-          Browse all players →
-        </Link>
+      <div className="mt-8 border-t border-border pt-4">
+        <NavItem
+          href="/players"
+          icon={
+            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+              <path d="M1.5 6h13M6 6v8.5" />
+            </svg>
+          }
+        >
+          Browse all players
+        </NavItem>
       </div>
     </aside>
   );

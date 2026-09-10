@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "Fantasy Analytics Dashboard",
@@ -13,8 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="bg-slate-950 text-slate-100 antialiased">
+    <html lang="en" className={inter.variable}>
+      <body className="bg-canvas font-sans text-ink-primary antialiased">
         <div className="flex min-h-screen">
           <Sidebar />
           <main className="flex-1 p-10">{children}</main>

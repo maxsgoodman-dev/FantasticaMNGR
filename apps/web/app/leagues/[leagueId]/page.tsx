@@ -1,8 +1,20 @@
 import Link from "next/link";
 import { fetchLeagueTeamView, type ConsistencyScoreRow } from "@/lib/leagues";
+import Card from "@/components/ui/Card";
+import StatTile from "@/components/ui/StatTile";
+import Badge from "@/components/ui/Badge";
+import SectionHeader from "@/components/ui/SectionHeader";
+import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 
 function formatPoints(points: number | null): string {
   return points === null ? "—" : points.toFixed(1);
+}
+
+function computeResult(myPoints: number | null, opponentPoints: number | null): string {
+  if (myPoints === null || opponentPoints === null) return "—";
+  if (myPoints > opponentPoints) return "W";
+  if (myPoints < opponentPoints) return "L";
+  return "T";
 }
 
 // Lower coefficient of variation = steadier week-to-week output. Dashes for
@@ -37,39 +49,46 @@ function TeamPanel({
   roster: RosterRowView[];
 }) {
   return (
-    <div className="rounded-md border border-slate-800 p-4">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-semibold text-slate-200">{teamName}</h3>
-        <span className="text-xl font-bold text-slate-100">{formatPoints(points)}</span>
+    <Card className="p-0">
+      <div className="flex items-baseline justify-between px-5 pt-5">
+        <h3 className="text-lg font-semibold text-ink-primary">{teamName}</h3>
+        <span className="text-xl font-bold text-ink-primary">{formatPoints(points)}</span>
       </div>
 
       {roster.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No roster data for this week.</p>
+        <p className="px-5 pb-5 pt-3 text-sm text-ink-faint">No roster data for this week.</p>
       ) : (
-        <table className="mt-3 w-full text-left text-sm">
-          <thead className="text-slate-500">
-            <tr>
-              <th className="py-1 font-medium">Player</th>
-              <th className="py-1 font-medium">Points</th>
-              <th className="py-1 font-medium" title="Coefficient of variation — lower means steadier week-to-week output">
-                Consistency
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.map((player) => (
-              <tr key={player.playerExternalId} className={player.isStarter ? "" : "opacity-50"}>
-                <td className="py-1 text-slate-200">{player.playerName}</td>
-                <td className="py-1 text-slate-300">{formatPoints(player.points)}</td>
-                <td className="py-1 text-slate-300" title={consistencyTitle(player.consistency)}>
-                  {formatConsistency(player.consistency)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Player</Th>
+                <Th>Points</Th>
+                <Th title="Coefficient of variation — lower means steadier week-to-week output">
+                  Consistency
+                </Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {roster.map((player) => (
+                <Tr key={player.playerExternalId} className={player.isStarter ? "" : "opacity-50"}>
+                  <Td className="flex items-center gap-2">
+                    {player.playerName}
+                    <Badge variant={player.isStarter ? "starter" : "bench"}>
+                      {player.isStarter ? "Starter" : "Bench"}
+                    </Badge>
+                  </Td>
+                  <Td>{formatPoints(player.points)}</Td>
+                  <Td className="text-ink-muted" title={consistencyTitle(player.consistency)}>
+                    {formatConsistency(player.consistency)}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -86,9 +105,9 @@ export default async function LeagueTeamViewPage({
   const leagueId = Number.parseInt(leagueIdParam, 10);
   if (!Number.isFinite(leagueId)) {
     return (
-      <p className="rounded-md border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-400">
-        Invalid league id: {leagueIdParam}
-      </p>
+      <Card className="border-red-900/50 bg-red-950/30">
+        <p className="text-sm text-red-400">Invalid league id: {leagueIdParam}</p>
+      </Card>
     );
   }
 
@@ -100,10 +119,12 @@ export default async function LeagueTeamViewPage({
     view = await fetchLeagueTeamView(leagueId, requestedWeek);
   } catch (error) {
     return (
-      <p className="rounded-md border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-400">
-        Couldn&apos;t load this league:{" "}
-        {error instanceof Error ? error.message : "Unknown error querying the warehouse"}
-      </p>
+      <Card className="border-red-900/50 bg-red-950/30">
+        <p className="text-sm text-red-400">
+          Couldn&apos;t load this league:{" "}
+          {error instanceof Error ? error.message : "Unknown error querying the warehouse"}
+        </p>
+      </Card>
     );
   }
 
@@ -120,70 +141,92 @@ export default async function LeagueTeamViewPage({
     standings,
   } = view;
 
+  const myPoints = myScore?.points ?? null;
+  const opponentPoints = opponentScore?.points ?? null;
+
   return (
     <div>
-      <h1 className="text-3xl font-bold">{league.name}</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        {league.format === "head_to_head" ? "Head-to-head" : "Classic"} · {league.season}
-      </p>
+      <SectionHeader
+        title={league.name}
+        size="lg"
+        description={`${league.format === "head_to_head" ? "Head-to-head" : "Classic"} · ${league.season}`}
+        controls={
+          <div className="flex items-center gap-1 rounded-md border border-border bg-surface p-1 text-sm">
+            {week > 1 ? (
+              <Link
+                href={`/leagues/${league.id}?week=${week - 1}`}
+                className="rounded px-2 py-1 text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
+              >
+                ← Wk {week - 1}
+              </Link>
+            ) : (
+              <span className="rounded px-2 py-1 text-ink-faint">← Wk {week - 1}</span>
+            )}
+            <span className="rounded bg-accent px-3 py-1 font-semibold text-black">Week {week}</span>
+            {week < latestWeek ? (
+              <Link
+                href={`/leagues/${league.id}?week=${week + 1}`}
+                className="rounded px-2 py-1 text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
+              >
+                Wk {week + 1} →
+              </Link>
+            ) : (
+              <span className="rounded px-2 py-1 text-ink-faint">Wk {week + 1} →</span>
+            )}
+          </div>
+        }
+      />
 
-      <div className="mt-4 flex items-center gap-3 text-sm">
-        {week > 1 ? (
-          <Link href={`/leagues/${league.id}?week=${week - 1}`} className="text-sky-400 hover:underline">
-            ← Week {week - 1}
-          </Link>
-        ) : (
-          <span className="text-slate-600">← Week {week - 1}</span>
-        )}
-        <span className="font-semibold text-slate-200">Week {week}</span>
-        {week < latestWeek ? (
-          <Link href={`/leagues/${league.id}?week=${week + 1}`} className="text-sky-400 hover:underline">
-            Week {week + 1} →
-          </Link>
-        ) : (
-          <span className="text-slate-600">Week {week + 1} →</span>
-        )}
-      </div>
+      {opponentTeam && (
+        <div className="mt-6 grid grid-cols-3 gap-4">
+          <StatTile label="My Score" value={formatPoints(myPoints)} />
+          <StatTile label="Opponent Score" value={formatPoints(opponentPoints)} />
+          <StatTile label="Result" value={computeResult(myPoints, opponentPoints)} accent />
+        </div>
+      )}
 
       <div className={`mt-6 grid gap-6 ${opponentTeam ? "md:grid-cols-2" : ""}`}>
-        <TeamPanel teamName={myTeam.teamName} points={myScore?.points ?? null} roster={myRoster} />
+        <TeamPanel teamName={myTeam.teamName} points={myPoints} roster={myRoster} />
         {opponentTeam && (
-          <TeamPanel
-            teamName={opponentTeam.teamName}
-            points={opponentScore?.points ?? null}
-            roster={opponentRoster}
-          />
+          <TeamPanel teamName={opponentTeam.teamName} points={opponentPoints} roster={opponentRoster} />
         )}
       </div>
 
       <section className="mt-10">
-        <h2 className="text-lg font-semibold text-slate-200">Standings</h2>
-        <p className="mt-1 text-xs text-slate-500">Each team&apos;s most recently synced score.</p>
-        <div className="mt-3 overflow-hidden rounded-md border border-slate-800">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-900 text-slate-400">
-              <tr>
-                <th className="px-4 py-2 font-medium">Team</th>
-                <th className="px-4 py-2 font-medium">Owner</th>
-                <th className="px-4 py-2 font-medium">Week</th>
-                <th className="px-4 py-2 font-medium">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {standings.map((row) => (
-                <tr key={row.team.externalTeamId} className="border-t border-slate-800">
-                  <td className="px-4 py-2 text-slate-200">
-                    {row.team.teamName}
-                    {row.team.isMine && <span className="ml-2 text-xs text-sky-400">(mine)</span>}
-                  </td>
-                  <td className="px-4 py-2 text-slate-400">{row.team.ownerName}</td>
-                  <td className="px-4 py-2 text-slate-400">{row.week}</td>
-                  <td className="px-4 py-2 text-slate-200">{formatPoints(row.points)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SectionHeader title="Standings" description="Each team's most recently synced score." />
+        <Card className="mt-3 overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>#</Th>
+                  <Th>Team</Th>
+                  <Th>Owner</Th>
+                  <Th>Week</Th>
+                  <Th>Points</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {standings.map((row, index) => (
+                  <Tr key={row.team.externalTeamId}>
+                    <Td className="text-ink-muted">{index + 1}</Td>
+                    <Td className="font-medium">
+                      {row.team.teamName}
+                      {row.team.isMine && (
+                        <span className="ml-2">
+                          <Badge variant="accent">mine</Badge>
+                        </span>
+                      )}
+                    </Td>
+                    <Td className="text-ink-muted">{row.team.ownerName}</Td>
+                    <Td className="text-ink-muted">{row.week}</Td>
+                    <Td>{formatPoints(row.points)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </div>
+        </Card>
       </section>
     </div>
   );
