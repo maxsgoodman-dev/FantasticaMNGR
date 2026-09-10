@@ -9,6 +9,7 @@ from fantasy_ingest.models import Player, Team
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 CLASSIC_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/"
 ENTRY_PICKS_URL = "https://fantasy.premierleague.com/api/entry/{entry_id}/event/{week}/picks/"
+ENTRY_HISTORY_URL = "https://fantasy.premierleague.com/api/entry/{entry_id}/history/"
 EVENT_LIVE_URL = "https://fantasy.premierleague.com/api/event/{week}/live/"
 H2H_STANDINGS_URL = "https://fantasy.premierleague.com/api/leagues-h2h/{league_id}/standings/"
 H2H_MATCHES_URL = "https://fantasy.premierleague.com/api/leagues-h2h-matches/league/{league_id}/"
@@ -148,6 +149,34 @@ def _normalize_h2h_matches(pages: list[dict], current_week: int) -> list[WeeklyS
     return scores
 
 
+def _normalize_entry_history(raw_json: dict) -> list[dict]:
+    """Normalize one manager's `past` seasons from /entry/{id}/history/.
+
+    Pure function, no network call — mirrors every other `_normalize_*`
+    in this file. Only `past` (multi-season track record) is surfaced;
+    `current` (this season's gameweek-by-gameweek, already synced via
+    fetch_classic_league_data/fetch_h2h_league_data) and `chips` are
+    deliberately not modeled here — see
+    docs/superpowers/specs/2026-09-11-fpl-manager-season-history-design.md.
+
+    A manager new to FPL this season has `"past": []`, which normalizes
+    to `[]` — a normal, valid outcome, not an error.
+
+    `rank_percentage` arrives from FPL as a JSON string (e.g. `"36"`);
+    it's semantically numeric, so it's cast to float here rather than
+    stored as text.
+    """
+    return [
+        {
+            "season_name": season["season_name"],
+            "total_points": season["total_points"],
+            "rank": season["rank"],
+            "rank_percentage": float(season["rank_percentage"]),
+        }
+        for season in raw_json.get("past", [])
+    ]
+
+
 class FPLAdapter(FantasySourceAdapter):
     source = "fpl"
     sport = "premier-league"
@@ -170,6 +199,19 @@ class FPLAdapter(FantasySourceAdapter):
         # FPL head-to-head standings require a league ID and manager ID,
         # neither of which is available from bootstrap-static. Not implemented yet.
         raise NotImplementedError("FPL matchups require a league ID and manager ID")
+
+    def fetch_entry_history(self, entry_id: str) -> list[dict]:
+        """Fetch one FPL manager's multi-season track record.
+
+        Not part of the FantasySourceAdapter interface (fetch_players/
+        fetch_teams/fetch_matchups) — a manager's own season-by-season
+        summary is a genuinely different kind of data, league- and
+        roster-independent, so it lives as its own method here, same as
+        fetch_h2h_league_data/fetch_classic_league_data.
+        """
+        response = self._client.get(ENTRY_HISTORY_URL.format(entry_id=entry_id))
+        response.raise_for_status()
+        return _normalize_entry_history(response.json())
 
     def _fetch_standings_pages(self, url: str) -> list[dict]:
         pages = []

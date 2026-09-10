@@ -5,6 +5,7 @@ from fantasy_ingest.adapters.fpl import (
     FPLAdapter,
     _current_gameweek,
     _normalize_classic_standings,
+    _normalize_entry_history,
     _normalize_h2h_matches,
     _normalize_h2h_teams,
     _normalize_picks,
@@ -396,3 +397,66 @@ def test_fetch_h2h_league_data_skips_a_team_whose_picks_call_fails():
     assert {team.external_id for team in result.teams} == {"111", "222"}
     assert WeeklyScore(team_external_id="111", week=1, points=65.0, opponent_external_id="222") in result.weekly_scores
     assert {entry.team_external_id for entry in result.roster_players} == {"111"}
+
+
+# Real shape confirmed live, 2026-09-09, against
+# GET https://fantasy.premierleague.com/api/entry/{entry_id}/history/
+ENTRY_HISTORY_FIXTURE = {
+    "current": [
+        {"event": 1, "points": 41, "total_points": 41, "rank": 6875552, "overall_rank": 6875541},
+    ],
+    "past": [
+        {"season_name": "2012/13", "total_points": 1814, "rank": 931683, "rank_percentage": "36"},
+        {"season_name": "2013/14", "total_points": 2248, "rank": 169686, "rank_percentage": "5"},
+    ],
+    "chips": [
+        {"name": "bboost", "time": "2026-08-28T17:25:01.123184Z", "event": 2},
+    ],
+}
+
+ENTRY_HISTORY_NO_PAST_FIXTURE = {
+    "current": [],
+    "past": [],
+    "chips": [],
+}
+
+
+def test_normalize_entry_history_maps_past_seasons():
+    rows = _normalize_entry_history(ENTRY_HISTORY_FIXTURE)
+
+    assert rows == [
+        {"season_name": "2012/13", "total_points": 1814, "rank": 931683, "rank_percentage": 36.0},
+        {"season_name": "2013/14", "total_points": 2248, "rank": 169686, "rank_percentage": 5.0},
+    ]
+
+
+def test_normalize_entry_history_returns_empty_list_when_no_past_seasons():
+    # A manager who is new to FPL this season has an empty `past` array —
+    # a normal, valid outcome, not an error.
+    assert _normalize_entry_history(ENTRY_HISTORY_NO_PAST_FIXTURE) == []
+
+
+def test_normalize_entry_history_casts_rank_percentage_to_a_number():
+    # FPL encodes rank_percentage as a JSON string (e.g. "36"); it's
+    # semantically numeric, so normalize casts it rather than storing text.
+    rows = _normalize_entry_history(ENTRY_HISTORY_FIXTURE)
+
+    assert all(isinstance(row["rank_percentage"], float) for row in rows)
+
+
+def test_normalize_entry_history_ignores_current_and_chips():
+    rows = _normalize_entry_history(ENTRY_HISTORY_FIXTURE)
+
+    assert all(set(row.keys()) == {"season_name", "total_points", "rank", "rank_percentage"} for row in rows)
+
+
+def test_fetch_entry_history_calls_the_right_url_and_returns_normalized_rows():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/entry/12345/history/")
+        return httpx.Response(200, json=ENTRY_HISTORY_FIXTURE)
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    rows = adapter.fetch_entry_history("12345")
+
+    assert rows == _normalize_entry_history(ENTRY_HISTORY_FIXTURE)
