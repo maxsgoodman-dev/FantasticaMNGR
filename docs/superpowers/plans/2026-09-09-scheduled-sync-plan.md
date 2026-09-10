@@ -156,14 +156,14 @@ git commit -m "Document scheduled sync as built; note required GitHub Actions se
 
 **Files:** none — this task is a runbook, not code, since it needs real secret values this plan's executor should not handle directly (see the design spec's Config & secrets section).
 
-- [ ] **Step 1: Repo owner sets the 7 secrets listed in Task 2**, via the GitHub UI (`Settings → Secrets and variables → Actions → New repository secret`) or `gh secret set <NAME>` run locally by the repo owner (each prompts for the value on stdin rather than taking it as a visible argument).
+- [x] **Step 1: Repo owner sets the 7 secrets listed in Task 2**, via the GitHub UI (`Settings → Secrets and variables → Actions → New repository secret`) or `gh secret set <NAME>` run locally by the repo owner (each prompts for the value on stdin rather than taking it as a visible argument).
 
-- [ ] **Step 2: Trigger a manual run**
+- [x] **Step 2: Trigger a manual run**
 
 Run: `gh workflow run sync.yml --ref main`
 Expected: queues a run; `gh run list --workflow=sync.yml` shows it, and `gh run watch` (or the repo's Actions tab) shows both `warehouse` and `sync_leagues` steps completing.
 
-- [ ] **Step 3: Confirm the cron will fire on schedule**
+- [x] **Step 3: Confirm the cron will fire on schedule**
 
 Run: `gh workflow view sync.yml`
 Expected: output includes the workflow's `schedule` trigger; GitHub Actions cron runs are evaluated in UTC and can be delayed under load, so the first scheduled (non-manual) run may land later than exactly 6 hours after this check — that's a GitHub Actions platform characteristic, not a bug in this workflow.
