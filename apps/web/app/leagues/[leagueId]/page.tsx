@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchLeagueTeamView, type ConsistencyScoreRow } from "@/lib/leagues";
+import { fetchLeagueTeamView, type PlayerValueRow } from "@/lib/leagues";
 import Card from "@/components/ui/Card";
 import StatTile from "@/components/ui/StatTile";
 import Badge from "@/components/ui/Badge";
@@ -21,14 +21,26 @@ function computeResult(myPoints: number | null, opponentPoints: number | null): 
 // both "no view row" (fewer than 2 weeks recorded, e.g. a player who just
 // joined the roster) and "row exists but avg_points is 0" (ratio undefined)
 // — see docs/superpowers/specs/2026-09-10-consistency-score-ui-design.md.
-function formatConsistency(score: ConsistencyScoreRow | null): string {
-  return score?.coefficientOfVariation == null ? "—" : score.coefficientOfVariation.toFixed(2);
+function formatConsistency(value: PlayerValueRow | null): string {
+  return value?.coefficientOfVariation == null ? "—" : value.coefficientOfVariation.toFixed(2);
 }
 
-function consistencyTitle(score: ConsistencyScoreRow | null): string | undefined {
-  return score
-    ? `avg ${score.avgPoints} ± ${score.pointsStddev} pts over ${score.weeksPlayed} weeks`
+// Unlike coefficientOfVariation, trade_value is never null once a row
+// exists — avg_points = 0 still yields a real (if minimal) trade_value —
+// so this only needs to check for a missing row entirely. See
+// docs/superpowers/specs/2026-09-11-trade-value-team-strength-ui-design.md.
+function formatTradeValue(value: PlayerValueRow | null): string {
+  return value == null ? "—" : value.tradeValue.toFixed(2);
+}
+
+function playerValueTitle(value: PlayerValueRow | null): string | undefined {
+  return value
+    ? `avg ${value.avgPoints} ± ${value.pointsStddev} pts over ${value.weeksPlayed} weeks`
     : undefined;
+}
+
+function formatShare(share: number | null | undefined): string {
+  return share == null ? "—" : `${Math.round(share * 100)}%`;
 }
 
 interface RosterRowView {
@@ -36,7 +48,7 @@ interface RosterRowView {
   playerName: string;
   isStarter: boolean;
   points: number;
-  consistency: ConsistencyScoreRow | null;
+  playerValue: PlayerValueRow | null;
 }
 
 function TeamPanel({
@@ -67,6 +79,9 @@ function TeamPanel({
                 <Th title="Coefficient of variation — lower means steadier week-to-week output">
                   Consistency
                 </Th>
+                <Th title="avg_points / (1 + coefficient of variation) — a single scoring+reliability figure, higher is better">
+                  Trade Value
+                </Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -79,8 +94,11 @@ function TeamPanel({
                     </Badge>
                   </Td>
                   <Td>{formatPoints(player.points)}</Td>
-                  <Td className="text-ink-muted" title={consistencyTitle(player.consistency)}>
-                    {formatConsistency(player.consistency)}
+                  <Td className="text-ink-muted" title={playerValueTitle(player.playerValue)}>
+                    {formatConsistency(player.playerValue)}
+                  </Td>
+                  <Td className="text-ink-muted" title={playerValueTitle(player.playerValue)}>
+                    {formatTradeValue(player.playerValue)}
                   </Td>
                 </Tr>
               ))}
@@ -204,6 +222,15 @@ export default async function LeagueTeamViewPage({
                   <Th>Owner</Th>
                   <Th>Week</Th>
                   <Th>Points</Th>
+                  <Th>Avg/Wk</Th>
+                  <Th title="Weekly points standard deviation — higher means less predictable week to week">
+                    Stddev
+                  </Th>
+                  <Th>Best Wk</Th>
+                  <Th>Worst Wk</Th>
+                  <Th title="Share of this team's synced roster points that came from starters, not bench — not guaranteed to equal the team's official weekly score (see fantasy_team_strength's own caveat re: captain-armband doubling)">
+                    Starter Share
+                  </Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -221,6 +248,11 @@ export default async function LeagueTeamViewPage({
                     <Td className="text-ink-muted">{row.team.ownerName}</Td>
                     <Td className="text-ink-muted">{row.week}</Td>
                     <Td>{formatPoints(row.points)}</Td>
+                    <Td className="text-ink-muted">{formatPoints(row.strength?.avgWeeklyPoints ?? null)}</Td>
+                    <Td className="text-ink-muted">{formatPoints(row.strength?.weeklyPointsStddev ?? null)}</Td>
+                    <Td className="text-ink-muted">{formatPoints(row.strength?.bestWeekPoints ?? null)}</Td>
+                    <Td className="text-ink-muted">{formatPoints(row.strength?.worstWeekPoints ?? null)}</Td>
+                    <Td className="text-ink-muted">{formatShare(row.strength?.starterPointsShare)}</Td>
                   </Tr>
                 ))}
               </Tbody>
