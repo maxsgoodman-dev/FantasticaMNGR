@@ -1,21 +1,23 @@
 import Link from "next/link";
 import {
   fetchLeagueTeamView,
+  type EntryGameweekStatRow,
   type FplSheetPlayerRow,
   type PlayerValueRow,
   type RosterPlayerRow,
   type StandingsRow,
 } from "@/lib/leagues";
+import SectionHeader from "@/components/ui/SectionHeader";
 import Card from "@/components/ui/Card";
-import StatTile from "@/components/ui/StatTile";
 import Badge from "@/components/ui/Badge";
 import Avatar from "@/components/ui/Avatar";
-import SectionHeader from "@/components/ui/SectionHeader";
-import TeamCompareChart from "@/components/ui/TeamCompareChart";
-import MatchupPrepCard, { type ToughFixture, type WeakSpot } from "@/components/ui/MatchupPrepCard";
-import NextGameweekPreviewCard, {
-  type NextGameweekPreviewPlayerRow,
-} from "@/components/ui/NextGameweekPreviewCard";
+import GameweekMatchupCard, {
+  type GameweekMatchupInsights,
+  type GameweekMatchupPlayerRow,
+  type GameweekMatchupTeamSummary,
+  type ToughFixture,
+  type WeakSpot,
+} from "@/components/ui/GameweekMatchupCard";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 
 function formatPoints(points: number | null): string {
@@ -31,47 +33,8 @@ function computeResult(myPoints: number | null, opponentPoints: number | null): 
   return "T";
 }
 
-const RESULT_TONE = { W: "win", L: "loss", T: "tie" } as const;
-
-// Lower coefficient of variation = steadier week-to-week output. Dashes for
-// both "no view row" (fewer than 2 weeks recorded, e.g. a player who just
-// joined the roster) and "row exists but avg_points is 0" (ratio undefined)
-// — see docs/superpowers/specs/2026-09-10-consistency-score-ui-design.md.
-function formatConsistency(value: PlayerValueRow | null): string {
-  return value?.coefficientOfVariation == null ? "—" : value.coefficientOfVariation.toFixed(2);
-}
-
-// Unlike coefficientOfVariation, trade_value is never null once a row
-// exists — avg_points = 0 still yields a real (if minimal) trade_value —
-// so this only needs to check for a missing row entirely. See
-// docs/superpowers/specs/2026-09-11-trade-value-team-strength-ui-design.md.
-function formatTradeValue(value: PlayerValueRow | null): string {
-  return value == null ? "—" : value.tradeValue.toFixed(2);
-}
-
-function playerValueTitle(value: PlayerValueRow | null): string | undefined {
-  return value
-    ? `avg ${value.avgPoints} ± ${value.pointsStddev} pts over ${value.weeksPlayed} weeks`
-    : undefined;
-}
-
 function formatShare(share: number | null | undefined): string {
   return share == null ? "—" : `${Math.round(share * 100)}%`;
-}
-
-function sumPoints(roster: RosterPlayerRow[], starter: boolean): number {
-  return roster.filter((player) => player.isStarter === starter).reduce((sum, player) => sum + player.points, 0);
-}
-
-// 0-100, higher = steadier. Omits players with no consistency data yet
-// (fewer than 2 weeks recorded) rather than treating them as zero-variance.
-function steadiness(roster: RosterPlayerRow[]): number {
-  const cvs = roster
-    .map((player) => player.playerValue?.coefficientOfVariation)
-    .filter((cv): cv is number => cv != null);
-  if (cvs.length === 0) return 0;
-  const avgCv = cvs.reduce((sum, cv) => sum + cv, 0) / cvs.length;
-  return Math.max(0, 100 - Math.min(avgCv, 1) * 100);
 }
 
 // Win probability from projected point differential, normalized by the
@@ -92,9 +55,9 @@ function computeWinProbability(myProjected: number, opponentProjected: number): 
 // low scoring and low reliability, using data already fetched for the
 // roster table. Starters with no trade-value row yet (too few recorded
 // weeks) are excluded rather than treated as the weakest.
-function computeWeakSpots(roster: RosterRowView[]): WeakSpot[] {
+function computeWeakSpots(roster: RosterPlayerRow[]): WeakSpot[] {
   const rated = roster.filter(
-    (player): player is RosterRowView & { playerValue: PlayerValueRow } =>
+    (player): player is RosterPlayerRow & { playerValue: PlayerValueRow } =>
       player.isStarter && player.playerValue != null
   );
   if (rated.length === 0) return [];
@@ -115,7 +78,7 @@ function computeWeakSpots(roster: RosterRowView[]): WeakSpot[] {
 const TOUGH_FIXTURE_THRESHOLD = 15;
 
 function computeToughFixtures(
-  roster: RosterRowView[],
+  roster: RosterPlayerRow[],
   fplSheetData: Map<string, FplSheetPlayerRow> | null
 ): ToughFixture[] {
   if (!fplSheetData) return [];
@@ -130,93 +93,56 @@ function computeToughFixtures(
   return fixtures;
 }
 
-function computeNextGameweekRoster(
+function buildMatchupRoster(
   roster: RosterPlayerRow[],
-  projections: Map<string, number>,
-  fplSheetData: Map<string, FplSheetPlayerRow>,
-  week: number
-): NextGameweekPreviewPlayerRow[] {
+  fplSheetData: Map<string, FplSheetPlayerRow> | null,
+  projections: Map<string, number> | null,
+  opposingRoster: RosterPlayerRow[],
+  week: number,
+  weekState: "future" | "played"
+): GameweekMatchupPlayerRow[] {
+  const opposingStarters = opposingRoster.filter((player) => player.isStarter);
+  const opposingStarterAverage =
+    opposingStarters.length === 0
+      ? null
+      : opposingStarters.reduce((sum, player) => sum + player.points, 0) / opposingStarters.length;
+
   return roster.map((player) => {
-    const sheetRow = fplSheetData.get(player.playerExternalId);
+    const sheetRow = fplSheetData?.get(player.playerExternalId) ?? null;
     const fixture = sheetRow?.nextFixtures.find((f) => f.gw === week) ?? null;
     return {
       playerExternalId: player.playerExternalId,
       playerName: player.playerName,
+      position: (sheetRow?.position as GameweekMatchupPlayerRow["position"]) ?? null,
       isStarter: player.isStarter,
-      projectedPoints: projections.get(player.playerExternalId) ?? null,
+      points: weekState === "played" ? player.points : null,
+      projectedPoints: weekState === "future" ? projections?.get(player.playerExternalId) ?? null : null,
       nextFixture: fixture ? `${fixture.opponent} (${fixture.isHome ? "H" : "A"})` : null,
+      consistency: weekState === "played" ? player.playerValue?.coefficientOfVariation ?? null : null,
+      tradeValue: weekState === "played" ? player.playerValue?.tradeValue ?? null : null,
+      impactPercent:
+        weekState === "played" && opposingStarterAverage != null && opposingStarterAverage > 0
+          ? (player.points / opposingStarterAverage) * 100
+          : null,
     };
   });
 }
 
-interface RosterRowView {
-  playerExternalId: string;
-  playerName: string;
-  isStarter: boolean;
-  points: number;
-  playerValue: PlayerValueRow | null;
-}
-
-function TeamPanel({
-  teamName,
-  points,
-  roster,
-}: {
-  teamName: string;
-  points: number | null;
-  roster: RosterRowView[];
-}) {
-  return (
-    <Card className="p-0">
-      <div className="flex items-baseline justify-between px-5 pt-5">
-        <div className="flex items-center gap-2">
-          <Avatar name={teamName} />
-          <h3 className="text-lg font-semibold text-ink-primary">{teamName}</h3>
-        </div>
-        <span className="text-xl font-bold text-ink-primary">{formatPoints(points)}</span>
-      </div>
-
-      {roster.length === 0 ? (
-        <p className="px-5 pb-5 pt-3 text-sm text-ink-faint">No roster data for this week.</p>
-      ) : (
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Player</Th>
-                <Th>Points</Th>
-                <Th title="Coefficient of variation — lower means steadier week-to-week output">
-                  Consistency
-                </Th>
-                <Th title="avg_points / (1 + coefficient of variation) — a single scoring+reliability figure, higher is better">
-                  Trade Value
-                </Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {roster.map((player) => (
-                <Tr key={player.playerExternalId} className={player.isStarter ? "" : "opacity-50"}>
-                  <Td className="flex items-center gap-2">
-                    {player.playerName}
-                    <Badge variant={player.isStarter ? "starter" : "bench"}>
-                      {player.isStarter ? "Starter" : "Bench"}
-                    </Badge>
-                  </Td>
-                  <Td>{formatPoints(player.points)}</Td>
-                  <Td className="text-ink-muted" title={playerValueTitle(player.playerValue)}>
-                    {formatConsistency(player.playerValue)}
-                  </Td>
-                  <Td className="text-ink-muted" title={playerValueTitle(player.playerValue)}>
-                    {formatTradeValue(player.playerValue)}
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
-      )}
-    </Card>
-  );
+function buildTeamSummary(
+  teamName: string,
+  score: number | null,
+  entryStats: EntryGameweekStatRow | null
+): GameweekMatchupTeamSummary {
+  return {
+    teamName,
+    score,
+    eventTransfers: entryStats?.eventTransfers ?? null,
+    eventTransfersCost: entryStats?.eventTransfersCost ?? null,
+    pointsOnBench: entryStats?.pointsOnBench ?? null,
+    teamValue: entryStats?.teamValue ?? null,
+    overallRank: entryStats?.overallRank ?? null,
+    activeChip: entryStats?.activeChip ?? null,
+  };
 }
 
 function StandingsDelta({ row }: { row: StandingsRow }) {
@@ -282,9 +208,11 @@ export default async function LeagueTeamViewPage({
     opponentScore,
     opponentRoster,
     standings,
+    weekState,
     matchupPreview,
     fplSheetData,
-    nextGameweekPreview,
+    projections,
+    entryGameweekStats,
   } = view;
 
   const myPoints = myScore?.points ?? null;
@@ -327,7 +255,7 @@ export default async function LeagueTeamViewPage({
               {isCurrentWeek && <span className="h-1.5 w-1.5 animate-live-pulse rounded-full bg-black" />}
               Week {week}
             </span>
-            {week < latestWeek ? (
+            {week < latestWeek + (league.sourceId === "fpl" && league.format === "head_to_head" ? 1 : 0) ? (
               <Link
                 href={`/leagues/${league.id}?week=${week + 1}`}
                 className="rounded px-2 py-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
@@ -341,78 +269,74 @@ export default async function LeagueTeamViewPage({
         }
       />
 
-      {opponentTeam && (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatTile label="My Score" value={formatPoints(myPoints)} />
-          <StatTile label="Opponent Score" value={formatPoints(opponentPoints)} />
-          <StatTile label="Result" value={result ?? "—"} tone={result ? RESULT_TONE[result] : "default"} />
-        </div>
-      )}
-
-      {opponentTeam && myProjected != null && opponentProjected != null && winProbability != null && (
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatTile label="My Projected" value={myProjected.toFixed(1)} sublabel="rest of this week" />
-          <StatTile label="Opponent Projected" value={opponentProjected.toFixed(1)} sublabel="rest of this week" />
-          <StatTile
-            label="Win Probability"
-            value={`${Math.round(winProbability * 100)}%`}
-            tone={winProbability >= 0.5 ? "win" : "loss"}
-          />
-        </div>
-      )}
-
-      {opponentTeam && matchupPreview && (
-        <MatchupPrepCard
-          opponentTeamName={opponentTeam.teamName}
-          weakSpots={weakSpots}
-          opponentStrength={opponentStrength}
-          toughFixtures={toughFixtures}
-        />
-      )}
-
-      {nextGameweekPreview && (
-        <NextGameweekPreviewCard
-          week={nextGameweekPreview.week}
-          myTeamName={myTeam.teamName}
-          opponentTeamName={nextGameweekPreview.opponentTeam.teamName}
-          myRoster={computeNextGameweekRoster(
-            nextGameweekPreview.myRoster,
-            nextGameweekPreview.projections,
-            nextGameweekPreview.fplSheetData,
-            nextGameweekPreview.week
+      {opponentTeam ? (
+        <GameweekMatchupCard
+          weekState={weekState}
+          week={week}
+          result={weekState === "played" ? result : null}
+          winProbability={weekState === "played" && week === latestWeek ? winProbability : null}
+          myTeam={buildTeamSummary(myTeam.teamName, myPoints, entryGameweekStats?.get(myTeam.externalTeamId) ?? null)}
+          opponentTeam={buildTeamSummary(
+            opponentTeam.teamName,
+            opponentPoints,
+            entryGameweekStats?.get(opponentTeam.externalTeamId) ?? null
           )}
-          opponentRoster={computeNextGameweekRoster(
-            nextGameweekPreview.opponentRoster,
-            nextGameweekPreview.projections,
-            nextGameweekPreview.fplSheetData,
-            nextGameweekPreview.week
-          )}
+          myRoster={buildMatchupRoster(myRoster, fplSheetData, projections, opponentRoster, week, weekState)}
+          opponentRoster={buildMatchupRoster(opponentRoster, fplSheetData, projections, myRoster, week, weekState)}
+          insights={
+            weekState === "played" && week === latestWeek && matchupPreview
+              ? { weakSpots, toughFixtures, opponentScouting: opponentStrength }
+              : null
+          }
         />
-      )}
-
-      {opponentTeam && (
-        <Card className="mt-6">
-          <SectionHeader title="Head-to-Head Comparison" />
-          <div className="mt-4">
-            <TeamCompareChart
-              myTeamName={myTeam.teamName}
-              opponentTeamName={opponentTeam.teamName}
-              metrics={[
-                { label: "Starter Points", mine: sumPoints(myRoster, true), opponent: sumPoints(opponentRoster, true) },
-                { label: "Bench Points", mine: sumPoints(myRoster, false), opponent: sumPoints(opponentRoster, false) },
-                { label: "Steadiness", mine: steadiness(myRoster), opponent: steadiness(opponentRoster) },
-              ]}
-            />
+      ) : (
+        <Card className="mt-6 p-0">
+          <div className="flex items-baseline justify-between px-5 pt-5">
+            <div className="flex items-center gap-2">
+              <Avatar name={myTeam.teamName} />
+              <h3 className="text-lg font-semibold text-ink-primary">{myTeam.teamName}</h3>
+            </div>
+            <span className="text-xl font-bold text-ink-primary">{formatPoints(myPoints)}</span>
           </div>
+          {myRoster.length === 0 ? (
+            <p className="px-5 pb-5 pt-3 text-sm text-ink-faint">No roster data for this week.</p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Player</Th>
+                    <Th>Points</Th>
+                    <Th title="Coefficient of variation — lower means steadier week-to-week output">Consistency</Th>
+                    <Th title="avg_points / (1 + coefficient of variation) — higher is better">Trade Value</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {myRoster.map((player) => (
+                    <Tr key={player.playerExternalId} className={player.isStarter ? "" : "opacity-50"}>
+                      <Td className="flex items-center gap-2">
+                        {player.playerName}
+                        <Badge variant={player.isStarter ? "starter" : "bench"}>
+                          {player.isStarter ? "Starter" : "Bench"}
+                        </Badge>
+                      </Td>
+                      <Td>{formatPoints(player.points)}</Td>
+                      <Td className="text-ink-muted">
+                        {player.playerValue?.coefficientOfVariation == null
+                          ? "—"
+                          : player.playerValue.coefficientOfVariation.toFixed(2)}
+                      </Td>
+                      <Td className="text-ink-muted">
+                        {player.playerValue == null ? "—" : player.playerValue.tradeValue.toFixed(2)}
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </div>
+          )}
         </Card>
       )}
-
-      <div className={`mt-6 grid gap-6 ${opponentTeam ? "lg:grid-cols-2" : ""}`}>
-        <TeamPanel teamName={myTeam.teamName} points={myPoints} roster={myRoster} />
-        {opponentTeam && (
-          <TeamPanel teamName={opponentTeam.teamName} points={opponentPoints} roster={opponentRoster} />
-        )}
-      </div>
 
       <section className="mt-10">
         <SectionHeader title="Standings" description="Each team's most recently synced score." />
