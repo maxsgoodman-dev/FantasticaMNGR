@@ -487,6 +487,73 @@ interface H2HFixtureDbRow {
   opponent_external_team_id: string | null;
 }
 
+interface EntryGameweekStatDbRow {
+  external_team_id: string;
+  event_transfers: number;
+  event_transfers_cost: number;
+  points_on_bench: number;
+  bank: number;
+  team_value: number;
+  overall_rank: number | null;
+  active_chip: string | null;
+}
+
+export interface EntryGameweekStatRow {
+  externalTeamId: string;
+  eventTransfers: number;
+  eventTransfersCost: number;
+  pointsOnBench: number;
+  bank: number;
+  teamValue: number;
+  overallRank: number | null;
+  activeChip: string | null;
+}
+
+function fromEntryGameweekStatRow(row: EntryGameweekStatDbRow): EntryGameweekStatRow {
+  return {
+    externalTeamId: row.external_team_id,
+    eventTransfers: row.event_transfers,
+    eventTransfersCost: row.event_transfers_cost,
+    pointsOnBench: row.points_on_bench,
+    bank: row.bank,
+    teamValue: row.team_value,
+    overallRank: row.overall_rank,
+    activeChip: row.active_chip,
+  };
+}
+
+// FPL H2H-only — this table is populated from the same picks response
+// fetch_h2h_league_data already calls per team per week; Sleeper/ESPN
+// and the FPL classic league have no equivalent row for this table. See
+// docs/superpowers/specs/2026-09-11-unified-gameweek-matchup-design.md.
+export async function fetchEntryGameweekStats(
+  sourceId: string,
+  externalLeagueId: string,
+  externalTeamIds: string[],
+  week: number
+): Promise<Map<string, EntryGameweekStatRow>> {
+  if (externalTeamIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("fpl_entry_gameweek_stats")
+    .select(
+      "external_team_id, event_transfers, event_transfers_cost, points_on_bench, bank, team_value, overall_rank, active_chip"
+    )
+    .eq("source_id", sourceId)
+    .eq("external_league_id", externalLeagueId)
+    .eq("week", week)
+    .in("external_team_id", externalTeamIds);
+
+  if (error) {
+    throw new Error(`warehouse query failed: ${error.message}`);
+  }
+
+  const rows = (data ?? []).map(fromEntryGameweekStatRow);
+  return new Map(rows.map((row) => [row.externalTeamId, row]));
+}
+
 export interface NextGameweekPreview {
   week: number;
   opponentTeam: FantasyTeam;
