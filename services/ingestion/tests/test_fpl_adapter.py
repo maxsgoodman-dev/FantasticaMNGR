@@ -9,6 +9,7 @@ from fantasy_ingest.adapters.fpl import (
     _normalize_h2h_fixtures,
     _normalize_h2h_matches,
     _normalize_h2h_teams,
+    _normalize_next_week_projections,
     _normalize_picks,
     _normalize_players,
     _normalize_projections,
@@ -40,6 +41,7 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "total_points": 150,
             "form": "5.5",
             "ep_this": "6.1",
+            "ep_next": "6.5",
         },
         {
             "id": 102,
@@ -51,6 +53,7 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "total_points": 90,
             "form": "3.0",
             "ep_this": "3.4",
+            "ep_next": "3.0",
         },
         {
             "id": 201,
@@ -62,6 +65,7 @@ BOOTSTRAP_STATIC_FIXTURE = {
             "total_points": 200,
             "form": "7.2",
             "ep_this": "8.0",
+            "ep_next": "8.5",
         },
     ],
     "events": EVENTS_FIXTURE,
@@ -123,6 +127,27 @@ def test_normalize_projections():
         PlayerProjection(player_external_id="102", projected_points=3.4),
         PlayerProjection(player_external_id="201", projected_points=8.0),
     ]
+
+
+def test_normalize_next_week_projections_uses_ep_next_not_ep_this():
+    projections = _normalize_next_week_projections(BOOTSTRAP_STATIC_FIXTURE)
+
+    assert projections == [
+        PlayerProjection(player_external_id="101", projected_points=6.5),
+        PlayerProjection(player_external_id="102", projected_points=3.0),
+        PlayerProjection(player_external_id="201", projected_points=8.5),
+    ]
+
+
+def test_fetch_next_week_projections_uses_ep_next():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=BOOTSTRAP_STATIC_FIXTURE)
+
+    adapter = FPLAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    projections = adapter.fetch_next_week_projections()
+
+    assert projections == _normalize_next_week_projections(BOOTSTRAP_STATIC_FIXTURE)
 
 
 def test_fetch_projections_returns_current_week_projections():

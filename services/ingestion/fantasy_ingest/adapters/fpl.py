@@ -70,6 +70,16 @@ def _normalize_projections(raw_json: dict) -> list[PlayerProjection]:
     ]
 
 
+def _normalize_next_week_projections(raw_json: dict) -> list[PlayerProjection]:
+    # ep_next — distinct from ep_this, which _normalize_projections uses
+    # for the current-week sync. Both are always present on the same
+    # bootstrap-static response; this is the only place ep_next is read.
+    return [
+        PlayerProjection(player_external_id=str(element["id"]), projected_points=float(element["ep_next"]))
+        for element in raw_json["elements"]
+    ]
+
+
 def _normalize_picks(
     picks_json: dict,
     live_points_by_id: dict[int, int],
@@ -257,6 +267,19 @@ class FPLAdapter(FantasySourceAdapter):
                 f"FPL only exposes projections for the current gameweek ({current_week}), not {week}"
             )
         return _normalize_projections(bootstrap)
+
+    def fetch_next_week_projections(self) -> list[PlayerProjection]:
+        """Next-gameweek expected points for every player, via ep_next.
+
+        Distinct from fetch_projections (current week, ep_this) — kept as
+        its own method rather than a parameter on fetch_projections,
+        since the two fields have genuinely different meanings: a
+        settled current-week estimate vs. an early look at a week that
+        hasn't started scoring yet. See
+        docs/superpowers/specs/2026-09-11-next-gameweek-preview-design.md.
+        """
+        bootstrap = self._fetch_bootstrap_static()
+        return _normalize_next_week_projections(bootstrap)
 
     def fetch_entry_history(self, entry_id: str) -> list[dict]:
         """Fetch one FPL manager's multi-season track record.
