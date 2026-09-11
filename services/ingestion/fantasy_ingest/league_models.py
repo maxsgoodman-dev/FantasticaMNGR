@@ -28,7 +28,15 @@ class RosterEntry:
 
 
 @dataclass
+class H2HFixture:
+    team_external_id: str
+    week: int
+    opponent_external_id: str | None = None
+
+
+@dataclass
 class LeagueSyncResult:
     teams: list[FantasyTeam] = field(default_factory=list)
     weekly_scores: list[WeeklyScore] = field(default_factory=list)
     roster_players: list[RosterEntry] = field(default_factory=list)
+    h2h_fixtures: list[H2HFixture] = field(default_factory=list)
