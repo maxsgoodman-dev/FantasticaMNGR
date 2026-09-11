@@ -40,7 +40,7 @@ export default function SidebarNav({ leagues }: { leagues: League[] }) {
               key={sportId}
               type="button"
               onClick={() => setActiveSport(sportId)}
-              className={`flex-1 rounded px-2 py-1.5 transition-colors ${
+              className={`flex-1 rounded px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                 sportId === visibleSportId ? "bg-accent text-black" : "text-ink-muted hover:text-ink-primary"
               }`}
             >

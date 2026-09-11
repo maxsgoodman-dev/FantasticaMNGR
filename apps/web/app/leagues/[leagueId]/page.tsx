@@ -293,7 +293,7 @@ export default async function LeagueTeamViewPage({
             {week > 1 ? (
               <Link
                 href={`/leagues/${league.id}?week=${week - 1}`}
-                className="rounded px-2 py-1 text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
+                className="rounded px-2 py-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               >
                 ← Wk {week - 1}
               </Link>
@@ -307,7 +307,7 @@ export default async function LeagueTeamViewPage({
             {week < latestWeek ? (
               <Link
                 href={`/leagues/${league.id}?week=${week + 1}`}
-                className="rounded px-2 py-1 text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
+                className="rounded px-2 py-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               >
                 Wk {week + 1} →
               </Link>

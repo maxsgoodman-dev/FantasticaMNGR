@@ -18,7 +18,7 @@ export default function NavItem({
     <Link
       href={href}
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
         active
           ? "bg-accent text-black shadow-card"
           : "text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
