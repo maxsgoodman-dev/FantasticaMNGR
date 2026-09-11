@@ -13,6 +13,9 @@ import Avatar from "@/components/ui/Avatar";
 import SectionHeader from "@/components/ui/SectionHeader";
 import TeamCompareChart from "@/components/ui/TeamCompareChart";
 import MatchupPrepCard, { type ToughFixture, type WeakSpot } from "@/components/ui/MatchupPrepCard";
+import NextGameweekPreviewCard, {
+  type NextGameweekPreviewPlayerRow,
+} from "@/components/ui/NextGameweekPreviewCard";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 
 function formatPoints(points: number | null): string {
@@ -125,6 +128,25 @@ function computeToughFixtures(
     }
   }
   return fixtures;
+}
+
+function computeNextGameweekRoster(
+  roster: RosterPlayerRow[],
+  projections: Map<string, number>,
+  fplSheetData: Map<string, FplSheetPlayerRow>,
+  week: number
+): NextGameweekPreviewPlayerRow[] {
+  return roster.map((player) => {
+    const sheetRow = fplSheetData.get(player.playerExternalId);
+    const fixture = sheetRow?.nextFixtures.find((f) => f.gw === week) ?? null;
+    return {
+      playerExternalId: player.playerExternalId,
+      playerName: player.playerName,
+      isStarter: player.isStarter,
+      projectedPoints: projections.get(player.playerExternalId) ?? null,
+      nextFixture: fixture ? `${fixture.opponent} (${fixture.isHome ? "H" : "A"})` : null,
+    };
+  });
 }
 
 interface RosterRowView {
@@ -262,6 +284,7 @@ export default async function LeagueTeamViewPage({
     standings,
     matchupPreview,
     fplSheetData,
+    nextGameweekPreview,
   } = view;
 
   const myPoints = myScore?.points ?? null;
@@ -344,6 +367,26 @@ export default async function LeagueTeamViewPage({
           weakSpots={weakSpots}
           opponentStrength={opponentStrength}
           toughFixtures={toughFixtures}
+        />
+      )}
+
+      {nextGameweekPreview && (
+        <NextGameweekPreviewCard
+          week={nextGameweekPreview.week}
+          myTeamName={myTeam.teamName}
+          opponentTeamName={nextGameweekPreview.opponentTeam.teamName}
+          myRoster={computeNextGameweekRoster(
+            nextGameweekPreview.myRoster,
+            nextGameweekPreview.projections,
+            nextGameweekPreview.fplSheetData,
+            nextGameweekPreview.week
+          )}
+          opponentRoster={computeNextGameweekRoster(
+            nextGameweekPreview.opponentRoster,
+            nextGameweekPreview.projections,
+            nextGameweekPreview.fplSheetData,
+            nextGameweekPreview.week
+          )}
         />
       )}
 
