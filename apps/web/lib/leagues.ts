@@ -75,6 +75,7 @@ export interface FplNextFixture {
 
 export interface FplSheetPlayerRow {
   playerExternalId: string;
+  position: string;
   difficultyScore: number | null;
   xgiPer90: number | null;
   xgcPer90: number | null;
@@ -96,9 +97,11 @@ export interface LeagueTeamView {
   // see fetchLeagueTeamView's isCurrentHeadToHeadWeek guard. Distinct
   // from "fetched but empty" (a Map) so the UI can tell "not applicable
   // here" apart from "applicable, but no data yet".
+  weekState: "future" | "played";
   matchupPreview: Map<string, MatchupPreviewRow> | null;
   fplSheetData: Map<string, FplSheetPlayerRow> | null;
-  nextGameweekPreview: NextGameweekPreview | null;
+  projections: Map<string, number> | null;
+  entryGameweekStats: Map<string, EntryGameweekStatRow> | null;
 }
 
 interface LeagueDbRow {
@@ -161,6 +164,7 @@ interface MatchupPreviewDbRow {
 
 interface FplSheetPlayerDbRow {
   external_player_id: string;
+  position: string;
   difficulty_score: number | null;
   xgi_per_90: number | null;
   xgc_per_90: number | null;
@@ -246,6 +250,7 @@ function fromMatchupPreviewRow(row: MatchupPreviewDbRow): MatchupPreviewRow {
 function fromFplSheetPlayerRow(row: FplSheetPlayerDbRow): FplSheetPlayerRow {
   return {
     playerExternalId: row.external_player_id,
+    position: row.position,
     difficultyScore: row.difficulty_score,
     xgiPer90: row.xgi_per_90,
     xgcPer90: row.xgc_per_90,
@@ -431,7 +436,7 @@ async function fetchFplSheetData(playerExternalIds: string[]): Promise<Map<strin
 
   const { data, error } = await supabase
     .from("fpl_sheet_player_data")
-    .select("external_player_id, difficulty_score, xgi_per_90, xgc_per_90, data_fetched, next_fixtures")
+    .select("external_player_id, position, difficulty_score, xgi_per_90, xgc_per_90, data_fetched, next_fixtures")
     .in("external_player_id", playerExternalIds)
     .order("data_fetched", { ascending: false });
 
@@ -526,7 +531,7 @@ function fromEntryGameweekStatRow(row: EntryGameweekStatDbRow): EntryGameweekSta
 // fetch_h2h_league_data already calls per team per week; Sleeper/ESPN
 // and the FPL classic league have no equivalent row for this table. See
 // docs/superpowers/specs/2026-09-11-unified-gameweek-matchup-design.md.
-export async function fetchEntryGameweekStats(
+async function fetchEntryGameweekStats(
   sourceId: string,
   externalLeagueId: string,
   externalTeamIds: string[],
@@ -554,38 +559,24 @@ export async function fetchEntryGameweekStats(
   return new Map(rows.map((row) => [row.externalTeamId, row]));
 }
 
-export interface NextGameweekPreview {
-  week: number;
-  opponentTeam: FantasyTeam;
-  myRoster: RosterPlayerRow[];
-  opponentRoster: RosterPlayerRow[];
-  projections: Map<string, number>;
-  fplSheetData: Map<string, FplSheetPlayerRow>;
-}
-
-// FPL-only, and only meaningful for the actual current week (see
-// fetchLeagueTeamView's isCurrentHeadToHeadWeek guard, the same gate
-// Matchup Prep uses). "Their team" here is the opponent's *current*
-// squad — a preview, not their locked lineup for next week, since FPL's
-// API genuinely doesn't expose a future gameweek's picks before its
+// FPL H2H-only. "Their team" here is the opponent's *current* squad — a
+// preview, not their locked lineup for next week, since FPL's API
+// genuinely doesn't expose a future gameweek's picks before its
 // deadline. See
 // docs/superpowers/specs/2026-09-11-next-gameweek-preview-design.md.
-async function fetchNextGameweekPreview(
+async function fetchFutureOpponent(
   league: League,
   myTeam: FantasyTeam,
   teams: FantasyTeam[],
-  myCurrentRoster: RosterPlayerRow[],
-  currentWeek: number
-): Promise<NextGameweekPreview | null> {
-  const nextWeek = currentWeek + 1;
-
+  week: number
+): Promise<FantasyTeam | null> {
   const { data, error } = await supabase
     .from("h2h_fixtures")
     .select("opponent_external_team_id")
     .eq("source_id", league.sourceId)
     .eq("external_league_id", league.externalLeagueId)
     .eq("external_team_id", myTeam.externalTeamId)
-    .eq("week", nextWeek)
+    .eq("week", week)
     .maybeSingle();
 
   if (error) {
@@ -597,35 +588,7 @@ async function fetchNextGameweekPreview(
     return null;
   }
 
-  const opponentTeam = teams.find((team) => team.externalTeamId === opponentExternalTeamId);
-  if (!opponentTeam) {
-    return null;
-  }
-
-  const opponentRoster = await fetchRoster(
-    league.sourceId,
-    league.externalLeagueId,
-    opponentTeam.externalTeamId,
-    currentWeek
-  );
-
-  const allPlayerIds = [
-    ...new Set([...myCurrentRoster, ...opponentRoster].map((player) => player.playerExternalId)),
-  ];
-
-  const [projections, fplSheetData] = await Promise.all([
-    fetchPlayerProjections(league.sourceId, league.sportId, nextWeek, allPlayerIds),
-    fetchFplSheetData(allPlayerIds),
-  ]);
-
-  return {
-    week: nextWeek,
-    opponentTeam,
-    myRoster: myCurrentRoster,
-    opponentRoster,
-    projections,
-    fplSheetData,
-  };
+  return teams.find((team) => team.externalTeamId === opponentExternalTeamId) ?? null;
 }
 
 // "Standings" = each team's most recently synced weekly_scores row, not a
@@ -702,16 +665,21 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     myTeam.externalTeamId
   );
   const latestWeek = myWeeklyScores.reduce((max, score) => Math.max(max, score.week), 0);
-  const week = requestedWeek ?? latestWeek;
+
+  // Next-gameweek preview is FPL H2H-only (see fetchFutureOpponent's own
+  // comment) — every other league format/source stays capped at
+  // latestWeek, same as before this feature existed.
+  const maxReachableWeek =
+    league.sourceId === "fpl" && league.format === "head_to_head" ? latestWeek + 1 : latestWeek;
+  const week = Math.min(Math.max(requestedWeek ?? latestWeek, 1), Math.max(maxReachableWeek, 1));
+  const weekState: "future" | "played" = week > latestWeek ? "future" : "played";
 
   const myScore = myWeeklyScores.find((score) => score.week === week) ?? null;
-  let myRoster = await fetchRoster(league.sourceId, league.externalLeagueId, myTeam.externalTeamId, week);
 
   let opponentTeam: FantasyTeam | null = null;
   let opponentScore: WeeklyScoreRow | null = null;
-  let opponentRoster: RosterPlayerRow[] = [];
 
-  if (league.format === "head_to_head" && myScore?.opponentExternalTeamId) {
+  if (weekState === "played" && league.format === "head_to_head" && myScore?.opponentExternalTeamId) {
     opponentTeam = teams.find((team) => team.externalTeamId === myScore.opponentExternalTeamId) ?? null;
     if (opponentTeam) {
       const opponentWeeklyScores = await fetchWeeklyScoresForTeam(
@@ -720,14 +688,19 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
         opponentTeam.externalTeamId
       );
       opponentScore = opponentWeeklyScores.find((score) => score.week === week) ?? null;
-      opponentRoster = await fetchRoster(
-        league.sourceId,
-        league.externalLeagueId,
-        opponentTeam.externalTeamId,
-        week
-      );
     }
+  } else if (weekState === "future" && league.format === "head_to_head") {
+    opponentTeam = await fetchFutureOpponent(league, myTeam, teams, week);
   }
+
+  // A future week has no locked lineup yet (FPL 404s it until the
+  // deadline passes) — both rosters preview the most recent *played*
+  // week's squad instead.
+  const rosterWeek = weekState === "future" ? latestWeek : week;
+  let myRoster = await fetchRoster(league.sourceId, league.externalLeagueId, myTeam.externalTeamId, rosterWeek);
+  let opponentRoster: RosterPlayerRow[] = opponentTeam
+    ? await fetchRoster(league.sourceId, league.externalLeagueId, opponentTeam.externalTeamId, rosterWeek)
+    : [];
 
   const rosterPlayerIds = [
     ...new Set([...myRoster, ...opponentRoster].map((player) => player.playerExternalId)),
@@ -752,14 +725,15 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     strength: teamStrengths.get(row.team.externalTeamId) ?? null,
   }));
 
-  // Matchup prep (projected score, weak-spot flags, opponent scouting)
-  // only makes sense for the current, in-progress week's head-to-head
-  // matchup — neither platform exposes next week's lineup yet, and a
-  // past week is settled history, not something to "prep" for. See
+  // Matchup prep (rest-of-week projected score, win probability, weak
+  // spots, tough fixtures, opponent scouting) only makes sense for the
+  // actual current, in-progress week's head-to-head matchup — a genuinely
+  // past week is settled history, and a future week has no in-progress
+  // score to project the "rest of" yet. See
   // docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
-  const isCurrentHeadToHeadWeek = week === latestWeek && opponentTeam !== null;
+  const isCurrentPlayedWeek = weekState === "played" && week === latestWeek && opponentTeam !== null;
 
-  const matchupPreview = isCurrentHeadToHeadWeek
+  const matchupPreview = isCurrentPlayedWeek
     ? await fetchMatchupPreview(
         league.sourceId,
         league.externalLeagueId,
@@ -768,18 +742,33 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
       )
     : null;
 
+  // Position (for sorting) and next-fixture data apply to ANY FPL week,
+  // played or future — not just the current one, unlike matchupPreview
+  // above. See
+  // docs/superpowers/specs/2026-09-11-unified-gameweek-matchup-design.md.
   const fplSheetData =
-    isCurrentHeadToHeadWeek && league.sourceId === "fpl" ? await fetchFplSheetData(rosterPlayerIds) : null;
+    league.sourceId === "fpl" && rosterPlayerIds.length > 0 ? await fetchFplSheetData(rosterPlayerIds) : null;
 
-  const nextGameweekPreview =
-    isCurrentHeadToHeadWeek && league.sourceId === "fpl"
-      ? await fetchNextGameweekPreview(league, myTeam, teams, myRoster, week)
+  const projections =
+    weekState === "future"
+      ? await fetchPlayerProjections(league.sourceId, league.sportId, week, rosterPlayerIds)
+      : null;
+
+  const entryGameweekStats =
+    weekState === "played" && league.sourceId === "fpl" && league.format === "head_to_head"
+      ? await fetchEntryGameweekStats(
+          league.sourceId,
+          league.externalLeagueId,
+          opponentTeam ? [myTeam.externalTeamId, opponentTeam.externalTeamId] : [myTeam.externalTeamId],
+          week
+        )
       : null;
 
   return {
     league,
     week,
     latestWeek,
+    weekState,
     myTeam,
     myScore,
     myRoster,
@@ -789,6 +778,7 @@ export async function fetchLeagueTeamView(leagueId: number, requestedWeek?: numb
     standings: standingsWithStrength,
     matchupPreview,
     fplSheetData,
-    nextGameweekPreview,
+    projections,
+    entryGameweekStats,
   };
 }
