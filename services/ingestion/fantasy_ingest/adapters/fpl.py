@@ -342,6 +342,7 @@ class FPLAdapter(FantasySourceAdapter):
 
         matches_pages = self._fetch_matches_pages(H2H_MATCHES_URL.format(league_id=league_id))
         weekly_scores = _normalize_h2h_matches(matches_pages, current_week)
+        h2h_fixtures = _normalize_h2h_fixtures(matches_pages)
 
         roster_players: list[RosterEntry] = []
         for week in range(1, current_week + 1):
@@ -367,4 +368,6 @@ class FPLAdapter(FantasySourceAdapter):
                 picks = picks_response.json()
                 roster_players.extend(_normalize_picks(picks, live_points_by_id, names_by_id, team.external_id, week))
 
-        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
+        return LeagueSyncResult(
+            teams=teams, weekly_scores=weekly_scores, roster_players=roster_players, h2h_fixtures=h2h_fixtures
+        )
