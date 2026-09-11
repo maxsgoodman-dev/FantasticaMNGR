@@ -67,11 +67,18 @@ export interface MatchupPreviewRow {
   startersMissingProjection: number;
 }
 
+export interface FplNextFixture {
+  gw: number;
+  opponent: string;
+  isHome: boolean;
+}
+
 export interface FplSheetPlayerRow {
   playerExternalId: string;
   difficultyScore: number | null;
   xgiPer90: number | null;
   xgcPer90: number | null;
+  nextFixtures: FplNextFixture[];
 }
 
 export interface LeagueTeamView {
@@ -157,6 +164,7 @@ interface FplSheetPlayerDbRow {
   xgi_per_90: number | null;
   xgc_per_90: number | null;
   data_fetched: string;
+  next_fixtures: Array<{ gw: number; opponent: string; is_home: boolean }>;
 }
 
 function fromLeagueRow(row: LeagueDbRow): League {
@@ -240,6 +248,11 @@ function fromFplSheetPlayerRow(row: FplSheetPlayerDbRow): FplSheetPlayerRow {
     difficultyScore: row.difficulty_score,
     xgiPer90: row.xgi_per_90,
     xgcPer90: row.xgc_per_90,
+    nextFixtures: (row.next_fixtures ?? []).map((fixture) => ({
+      gw: fixture.gw,
+      opponent: fixture.opponent,
+      isHome: fixture.is_home,
+    })),
   };
 }
 
@@ -417,7 +430,7 @@ async function fetchFplSheetData(playerExternalIds: string[]): Promise<Map<strin
 
   const { data, error } = await supabase
     .from("fpl_sheet_player_data")
-    .select("external_player_id, difficulty_score, xgi_per_90, xgc_per_90, data_fetched")
+    .select("external_player_id, difficulty_score, xgi_per_90, xgc_per_90, data_fetched, next_fixtures")
     .in("external_player_id", playerExternalIds)
     .order("data_fetched", { ascending: false });
 
