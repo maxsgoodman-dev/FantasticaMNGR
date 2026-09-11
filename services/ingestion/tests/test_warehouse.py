@@ -10,6 +10,7 @@ from fantasy_ingest.warehouse import (
     sync_all_leagues,
     sync_fpl_sheet,
     sync_league_data,
+    sync_next_week_projections,
     sync_projections,
 )
 
@@ -99,6 +100,14 @@ class FakeAdapterWithProjections(FakeAdapter):
         return [PlayerProjection(player_external_id="101", projected_points=12.5)]
 
 
+class FakeAdapterWithNextWeekProjections(FakeAdapter):
+    def current_gameweek(self) -> int:
+        return 3
+
+    def fetch_next_week_projections(self) -> list[PlayerProjection]:
+        return [PlayerProjection(player_external_id="101", projected_points=6.5)]
+
+
 def test_sync_projections_posts_with_upsert_semantics(recorded_requests):
     client = make_client(recorded_requests)
 
@@ -137,6 +146,33 @@ def test_sync_projections_skips_empty_post_when_no_rows(recorded_requests):
 
     assert counts == {"projections": 0}
     assert recorded_requests == []
+
+
+def test_sync_next_week_projections_posts_at_current_gameweek_plus_one(recorded_requests):
+    client = make_client(recorded_requests)
+
+    counts = sync_next_week_projections(FakeAdapterWithNextWeekProjections(), client=client)
+
+    assert counts == {"projections": 1}
+    assert len(recorded_requests) == 1
+    request = recorded_requests[0]
+    assert request.url.path.endswith("/player_projections")
+    assert "on_conflict=source_id,sport_id,week,external_player_id" in str(request.url)
+
+
+def test_sync_next_week_projections_rows_use_current_gameweek_plus_one(recorded_requests):
+    import json
+
+    client = make_client(recorded_requests)
+
+    sync_next_week_projections(FakeAdapterWithNextWeekProjections(), client=client)
+
+    row = json.loads(recorded_requests[0].content)[0]
+    assert row["source_id"] == "testsource"
+    assert row["sport_id"] == "testsport"
+    assert row["week"] == 4
+    assert row["external_player_id"] == "101"
+    assert row["projected_points"] == 6.5
 
 
 class BrokenAdapter(FakeAdapter):

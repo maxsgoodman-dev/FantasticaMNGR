@@ -128,6 +128,46 @@ def sync_projections(
     return {"projections": len(rows)}
 
 
+def _next_week_projection_rows(adapter: FantasySourceAdapter, week: int) -> list[dict]:
+    return [
+        {
+            "source_id": adapter.source,
+            "sport_id": adapter.sport,
+            "week": week,
+            "external_player_id": projection.player_external_id,
+            "projected_points": projection.projected_points,
+        }
+        for projection in adapter.fetch_next_week_projections()
+    ]
+
+
+def sync_next_week_projections(adapter: FantasySourceAdapter, client: httpx.Client | None = None) -> dict[str, int]:
+    """Fetch and upsert next-gameweek projections (ep_next) at
+    week = adapter.current_gameweek() + 1, into the same
+    player_projections table sync_projections uses for the current week.
+
+    FPL-only for now: fetch_next_week_projections isn't part of the
+    FantasySourceAdapter interface — Sleeper/ESPN have no confirmed
+    equivalent "look ahead" endpoint. See
+    docs/superpowers/specs/2026-09-11-next-gameweek-preview-design.md.
+    """
+    owns_client = client is None
+    client = client or _client()
+    try:
+        week = adapter.current_gameweek() + 1
+        rows = _next_week_projection_rows(adapter, week)
+        if rows:
+            response = client.post(
+                "/player_projections?on_conflict=source_id,sport_id,week,external_player_id", json=rows
+            )
+            response.raise_for_status()
+    finally:
+        if owns_client:
+            client.close()
+
+    return {"projections": len(rows)}
+
+
 def sync_all(adapters: list[FantasySourceAdapter], client: httpx.Client | None = None) -> dict[str, dict]:
     """Sync every adapter, one failure at a time.
 
@@ -360,6 +400,12 @@ def main() -> None:
     # docs/superpowers/specs/2026-09-10-matchup-prep-design.md.
     _sync_projections_for("fpl", fpl.current_gameweek, fpl)
     _sync_projections_for("sleeper", sleeper.current_week, sleeper)
+
+    try:
+        next_week_result = sync_next_week_projections(fpl)
+        print(f"fpl-next-week-projections: {next_week_result['projections']} projections")
+    except Exception as error:  # noqa: BLE001 - a bad next-week pull must not block everything else
+        print(f"fpl-next-week-projections: FAILED — {error}")
 
     try:
         sheet_result = sync_fpl_sheet()
