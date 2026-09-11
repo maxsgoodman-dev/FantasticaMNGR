@@ -3,7 +3,7 @@ import sys
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
-from fantasy_ingest.league_models import FantasyTeam, LeagueSyncResult, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import FantasyTeam, H2HFixture, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, PlayerProjection, Team
 
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -160,6 +160,28 @@ def _normalize_h2h_matches(pages: list[dict], current_week: int) -> list[WeeklyS
                     )
                 )
     return scores
+
+
+def _normalize_h2h_fixtures(pages: list[dict]) -> list[H2HFixture]:
+    """Every gameweek's H2H pairing for every team, past and future.
+
+    Unlike _normalize_h2h_matches (which discards anything past
+    current_week, since it's building settled *results*), this keeps
+    every event the pages contain. The H2H schedule itself is fixed at
+    the start of the season and known for all gameweeks regardless of
+    whether they've been played — see
+    docs/superpowers/specs/2026-09-11-next-gameweek-preview-design.md.
+    """
+    fixtures = []
+    for page in pages:
+        for match in page["results"]:
+            week = match["event"]
+            entry_1 = str(match["entry_1_entry"])
+            entry_2 = str(match["entry_2_entry"]) if match.get("entry_2_entry") is not None else None
+            fixtures.append(H2HFixture(team_external_id=entry_1, week=week, opponent_external_id=entry_2))
+            if entry_2 is not None:
+                fixtures.append(H2HFixture(team_external_id=entry_2, week=week, opponent_external_id=entry_1))
+    return fixtures
 
 
 def _normalize_entry_history(raw_json: dict) -> list[dict]:

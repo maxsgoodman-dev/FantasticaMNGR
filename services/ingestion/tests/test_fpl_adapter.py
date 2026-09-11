@@ -6,6 +6,7 @@ from fantasy_ingest.adapters.fpl import (
     _current_gameweek,
     _normalize_classic_standings,
     _normalize_entry_history,
+    _normalize_h2h_fixtures,
     _normalize_h2h_matches,
     _normalize_h2h_teams,
     _normalize_picks,
@@ -13,7 +14,7 @@ from fantasy_ingest.adapters.fpl import (
     _normalize_projections,
     _normalize_teams,
 )
-from fantasy_ingest.league_models import FantasyTeam, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import FantasyTeam, H2HFixture, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, PlayerProjection, Team
 
 EVENTS_FIXTURE = [
@@ -346,6 +347,7 @@ H2H_MATCHES_PAGE = {
     "results": [
         {"event": 1, "entry_1_entry": 111, "entry_1_points": 65, "entry_2_entry": 222, "entry_2_points": 58},
         {"event": 2, "entry_1_entry": 111, "entry_1_points": 70, "entry_2_entry": None, "entry_2_points": 0},
+        {"event": 3, "entry_1_entry": 111, "entry_1_points": 0, "entry_2_entry": 333, "entry_2_points": 0},
     ],
 }
 
@@ -378,6 +380,22 @@ def test_normalize_h2h_matches_excludes_weeks_after_current():
 
     assert all(score.week <= 1 for score in scores)
     assert any(score.team_external_id == "111" and score.week == 1 for score in scores)
+
+
+def test_normalize_h2h_fixtures_includes_every_week_past_and_future():
+    fixtures = _normalize_h2h_fixtures([H2H_MATCHES_PAGE])
+
+    assert H2HFixture(team_external_id="111", week=1, opponent_external_id="222") in fixtures
+    assert H2HFixture(team_external_id="222", week=1, opponent_external_id="111") in fixtures
+    assert H2HFixture(team_external_id="111", week=3, opponent_external_id="333") in fixtures
+    assert H2HFixture(team_external_id="333", week=3, opponent_external_id="111") in fixtures
+
+
+def test_normalize_h2h_fixtures_handles_a_bye_with_no_second_entry():
+    fixtures = _normalize_h2h_fixtures([H2H_MATCHES_PAGE])
+
+    week_2_fixtures = [f for f in fixtures if f.week == 2]
+    assert week_2_fixtures == [H2HFixture(team_external_id="111", week=2, opponent_external_id=None)]
 
 
 def test_fetch_h2h_league_data_pulls_teams_matches_and_every_teams_roster():
