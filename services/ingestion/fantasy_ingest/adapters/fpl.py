@@ -3,7 +3,14 @@ import sys
 import httpx
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
-from fantasy_ingest.league_models import FantasyTeam, H2HFixture, LeagueSyncResult, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import (
+    EntryGameweekStat,
+    FantasyTeam,
+    H2HFixture,
+    LeagueSyncResult,
+    RosterEntry,
+    WeeklyScore,
+)
 from fantasy_ingest.models import Player, PlayerProjection, Team
 
 BOOTSTRAP_STATIC_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -102,6 +109,31 @@ def _normalize_picks(
             )
         )
     return entries
+
+
+def _normalize_entry_gameweek_stat(picks_json: dict, team_external_id: str, week: int) -> EntryGameweekStat:
+    """Extract the per-team, per-week manager stats already present on the
+    same picks response _normalize_picks reads — event_transfers, chip
+    used, bench points, team value, overall rank. fetch_h2h_league_data
+    already fetches this exact response for every team, every week; this
+    is the only place the rest of it (previously discarded) is read. See
+    docs/superpowers/specs/2026-09-11-unified-gameweek-matchup-design.md.
+
+    bank/value arrive from FPL as tenths of a £m, same convention as
+    now_cost elsewhere in this adapter — divided by 10 here.
+    """
+    entry_history = picks_json["entry_history"]
+    return EntryGameweekStat(
+        team_external_id=team_external_id,
+        week=week,
+        event_transfers=entry_history["event_transfers"],
+        event_transfers_cost=entry_history["event_transfers_cost"],
+        points_on_bench=entry_history["points_on_bench"],
+        bank=entry_history["bank"] / 10,
+        team_value=entry_history["value"] / 10,
+        overall_rank=entry_history.get("overall_rank"),
+        active_chip=picks_json.get("active_chip"),
+    )
 
 
 def _normalize_classic_standings(

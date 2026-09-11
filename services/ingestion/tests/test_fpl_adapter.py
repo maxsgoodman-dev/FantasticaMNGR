@@ -5,6 +5,7 @@ from fantasy_ingest.adapters.fpl import (
     FPLAdapter,
     _current_gameweek,
     _normalize_classic_standings,
+    _normalize_entry_gameweek_stat,
     _normalize_entry_history,
     _normalize_h2h_fixtures,
     _normalize_h2h_matches,
@@ -15,7 +16,7 @@ from fantasy_ingest.adapters.fpl import (
     _normalize_projections,
     _normalize_teams,
 )
-from fantasy_ingest.league_models import FantasyTeam, H2HFixture, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import EntryGameweekStat, FantasyTeam, H2HFixture, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, PlayerProjection, Team
 
 EVENTS_FIXTURE = [
@@ -230,6 +231,68 @@ def test_normalize_picks_starting_xi_is_position_11_or_lower():
 
     assert len(entries) == 3
     assert sum(1 for entry in entries if entry.is_starter) == 2
+
+
+# Real shape confirmed live, 2026-09-09, against
+# GET https://fantasy.premierleague.com/api/entry/{entry_id}/event/{week}/picks/
+FULL_PICKS_FIXTURE = {
+    "active_chip": "3xc",
+    "picks": [
+        {"element": 101, "position": 1, "multiplier": 3, "is_captain": True},
+    ],
+    "entry_history": {
+        "event": 4,
+        "points": 65,
+        "event_transfers": 2,
+        "event_transfers_cost": 0,
+        "points_on_bench": 15,
+        "bank": 2,
+        "value": 1004,
+        "overall_rank": 2700348,
+    },
+}
+
+FULL_PICKS_FIXTURE_NO_CHIP = {
+    "active_chip": None,
+    "picks": [
+        {"element": 101, "position": 1, "multiplier": 1, "is_captain": False},
+    ],
+    "entry_history": {
+        "event": 4,
+        "points": 40,
+        "event_transfers": 0,
+        "event_transfers_cost": 0,
+        "points_on_bench": 4,
+        "bank": 0,
+        "value": 998,
+        "overall_rank": None,
+    },
+}
+
+
+def test_normalize_entry_gameweek_stat_extracts_entry_history_and_active_chip():
+    stat = _normalize_entry_gameweek_stat(FULL_PICKS_FIXTURE, team_external_id="111", week=4)
+
+    assert stat == EntryGameweekStat(
+        team_external_id="111",
+        week=4,
+        event_transfers=2,
+        event_transfers_cost=0,
+        points_on_bench=15,
+        bank=0.2,
+        team_value=100.4,
+        overall_rank=2700348,
+        active_chip="3xc",
+    )
+
+
+def test_normalize_entry_gameweek_stat_handles_no_chip_and_no_overall_rank():
+    stat = _normalize_entry_gameweek_stat(FULL_PICKS_FIXTURE_NO_CHIP, team_external_id="111", week=4)
+
+    assert stat.active_chip is None
+    assert stat.overall_rank is None
+    assert stat.bank == 0.0
+    assert stat.team_value == 99.8
 
 
 CLASSIC_STANDINGS_PAGE_1 = {
