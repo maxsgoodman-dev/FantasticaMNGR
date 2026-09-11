@@ -93,14 +93,20 @@ export interface LeagueTeamView {
   opponentScore: WeeklyScoreRow | null;
   opponentRoster: RosterPlayerRow[];
   standings: StandingsRow[];
-  // Both null unless this is the current week's head-to-head matchup —
-  // see fetchLeagueTeamView's isCurrentHeadToHeadWeek guard. Distinct
-  // from "fetched but empty" (a Map) so the UI can tell "not applicable
-  // here" apart from "applicable, but no data yet".
   weekState: "future" | "played";
+  // Null unless week === latestWeek (the current, in-progress week) —
+  // see fetchLeagueTeamView's isCurrentPlayedWeek guard. Distinct from
+  // "fetched but empty" (a Map) so the UI can tell "not applicable here"
+  // apart from "applicable, but no data yet".
   matchupPreview: Map<string, MatchupPreviewRow> | null;
+  // Null unless league.sourceId === "fpl" — available for ANY FPL week
+  // (future or played), not just the current one, unlike matchupPreview
+  // above.
   fplSheetData: Map<string, FplSheetPlayerRow> | null;
+  // Null unless weekState === "future".
   projections: Map<string, number> | null;
+  // Null unless weekState === "played" and this is an FPL head-to-head
+  // league.
   entryGameweekStats: Map<string, EntryGameweekStatRow> | null;
 }
 
