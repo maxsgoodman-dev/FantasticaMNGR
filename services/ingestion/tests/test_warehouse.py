@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from fantasy_ingest.adapters.base import FantasySourceAdapter
-from fantasy_ingest.league_models import FantasyTeam, H2HFixture, LeagueSyncResult, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import EntryGameweekStat, FantasyTeam, H2HFixture, LeagueSyncResult, RosterEntry, WeeklyScore
 from fantasy_ingest.models import Player, PlayerProjection, Team
 from fantasy_ingest.warehouse import (
     sync_adapter,
@@ -222,7 +222,7 @@ def test_sync_league_data_posts_league_teams_scores_and_roster(recorded_requests
 
     counts = sync_league_data(SLEEPER_LEAGUE, make_league_sync_result(), client=client)
 
-    assert counts == {"teams": 1, "weekly_scores": 1, "roster_players": 1, "h2h_fixtures": 0}
+    assert counts == {"teams": 1, "weekly_scores": 1, "roster_players": 1, "h2h_fixtures": 0, "entry_gameweek_stats": 0}
     paths = [request.url.path for request in recorded_requests]
     assert paths == [
         "/rest/v1/leagues",
@@ -242,11 +242,76 @@ def test_sync_league_data_posts_h2h_fixtures_when_present(recorded_requests):
     counts = sync_league_data(SLEEPER_LEAGUE, result, client=client)
 
     assert counts["h2h_fixtures"] == 1
+    assert counts["entry_gameweek_stats"] == 0
     paths = [request.url.path for request in recorded_requests]
     assert paths == ["/rest/v1/leagues", "/rest/v1/h2h_fixtures"]
 
     fixture_request = recorded_requests[1]
     assert "on_conflict=source_id,external_league_id,external_team_id,week" in str(fixture_request.url)
+
+
+def test_sync_league_data_posts_entry_gameweek_stats_when_present(recorded_requests):
+    client = make_client(recorded_requests)
+    result = LeagueSyncResult(
+        entry_gameweek_stats=[
+            EntryGameweekStat(
+                team_external_id="1",
+                week=4,
+                event_transfers=2,
+                event_transfers_cost=0,
+                points_on_bench=15,
+                bank=0.2,
+                team_value=100.4,
+                overall_rank=2700348,
+                active_chip="3xc",
+            )
+        ]
+    )
+
+    counts = sync_league_data(SLEEPER_LEAGUE, result, client=client)
+
+    assert counts["entry_gameweek_stats"] == 1
+    paths = [request.url.path for request in recorded_requests]
+    assert paths == ["/rest/v1/leagues", "/rest/v1/fpl_entry_gameweek_stats"]
+
+    stats_request = recorded_requests[1]
+    assert "on_conflict=source_id,external_league_id,external_team_id,week" in str(stats_request.url)
+
+
+def test_sync_league_data_entry_gameweek_stat_row_shape(recorded_requests):
+    import json
+
+    client = make_client(recorded_requests)
+    result = LeagueSyncResult(
+        entry_gameweek_stats=[
+            EntryGameweekStat(
+                team_external_id="1",
+                week=4,
+                event_transfers=2,
+                event_transfers_cost=4,
+                points_on_bench=15,
+                bank=0.2,
+                team_value=100.4,
+                overall_rank=2700348,
+                active_chip="3xc",
+            )
+        ]
+    )
+
+    sync_league_data(SLEEPER_LEAGUE, result, client=client)
+
+    row = json.loads(recorded_requests[1].content)[0]
+    assert row["source_id"] == "sleeper"
+    assert row["external_league_id"] == "L1"
+    assert row["external_team_id"] == "1"
+    assert row["week"] == 4
+    assert row["event_transfers"] == 2
+    assert row["event_transfers_cost"] == 4
+    assert row["points_on_bench"] == 15
+    assert row["bank"] == 0.2
+    assert row["team_value"] == 100.4
+    assert row["overall_rank"] == 2700348
+    assert row["active_chip"] == "3xc"
 
 
 def test_sync_all_leagues_isolates_a_failing_league(recorded_requests):
@@ -262,7 +327,9 @@ def test_sync_all_leagues_isolates_a_failing_league(recorded_requests):
 
     results = sync_all_leagues(jobs, client=client)
 
-    assert results["sleeper:L1"] == {"teams": 1, "weekly_scores": 1, "roster_players": 1, "h2h_fixtures": 0}
+    assert results["sleeper:L1"] == {
+        "teams": 1, "weekly_scores": 1, "roster_players": 1, "h2h_fixtures": 0, "entry_gameweek_stats": 0
+    }
     assert "FPL is down" in results["fpl:L2"]["error"]
 
 
@@ -271,7 +338,7 @@ def test_sync_league_data_always_posts_league_row_but_skips_empty_child_tables(r
 
     counts = sync_league_data(SLEEPER_LEAGUE, LeagueSyncResult(), client=client)
 
-    assert counts == {"teams": 0, "weekly_scores": 0, "roster_players": 0, "h2h_fixtures": 0}
+    assert counts == {"teams": 0, "weekly_scores": 0, "roster_players": 0, "h2h_fixtures": 0, "entry_gameweek_stats": 0}
     paths = [request.url.path for request in recorded_requests]
     assert paths == ["/rest/v1/leagues"]
 

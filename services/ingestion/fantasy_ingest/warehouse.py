@@ -259,6 +259,25 @@ def _h2h_fixture_rows(league: dict, result: LeagueSyncResult) -> list[dict]:
     ]
 
 
+def _entry_gameweek_stat_rows(league: dict, result: LeagueSyncResult) -> list[dict]:
+    return [
+        {
+            "source_id": league["source_id"],
+            "external_league_id": league["external_league_id"],
+            "external_team_id": stat.team_external_id,
+            "week": stat.week,
+            "event_transfers": stat.event_transfers,
+            "event_transfers_cost": stat.event_transfers_cost,
+            "points_on_bench": stat.points_on_bench,
+            "bank": stat.bank,
+            "team_value": stat.team_value,
+            "overall_rank": stat.overall_rank,
+            "active_chip": stat.active_chip,
+        }
+        for stat in result.entry_gameweek_stats
+    ]
+
+
 def sync_league_data(
     league: dict, result: LeagueSyncResult, client: httpx.Client | None = None
 ) -> dict[str, int]:
@@ -304,6 +323,14 @@ def sync_league_data(
                 "/h2h_fixtures?on_conflict=source_id,external_league_id,external_team_id,week", json=fixture_rows
             )
             response.raise_for_status()
+
+        entry_stat_rows = _entry_gameweek_stat_rows(league, result)
+        if entry_stat_rows:
+            response = client.post(
+                "/fpl_entry_gameweek_stats?on_conflict=source_id,external_league_id,external_team_id,week",
+                json=entry_stat_rows,
+            )
+            response.raise_for_status()
     finally:
         if owns_client:
             client.close()
@@ -313,6 +340,7 @@ def sync_league_data(
         "weekly_scores": len(score_rows),
         "roster_players": len(roster_rows),
         "h2h_fixtures": len(fixture_rows),
+        "entry_gameweek_stats": len(entry_stat_rows),
     }
 
 
