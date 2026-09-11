@@ -35,8 +35,22 @@ class H2HFixture:
 
 
 @dataclass
+class EntryGameweekStat:
+    team_external_id: str
+    week: int
+    event_transfers: int
+    event_transfers_cost: int
+    points_on_bench: int
+    bank: float
+    team_value: float
+    overall_rank: int | None
+    active_chip: str | None = None
+
+
+@dataclass
 class LeagueSyncResult:
     teams: list[FantasyTeam] = field(default_factory=list)
     weekly_scores: list[WeeklyScore] = field(default_factory=list)
     roster_players: list[RosterEntry] = field(default_factory=list)
     h2h_fixtures: list[H2HFixture] = field(default_factory=list)
+    entry_gameweek_stats: list[EntryGameweekStat] = field(default_factory=list)

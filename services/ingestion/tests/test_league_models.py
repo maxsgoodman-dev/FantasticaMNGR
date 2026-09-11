@@ -1,4 +1,11 @@
-from fantasy_ingest.league_models import FantasyTeam, H2HFixture, LeagueSyncResult, RosterEntry, WeeklyScore
+from fantasy_ingest.league_models import (
+    EntryGameweekStat,
+    FantasyTeam,
+    H2HFixture,
+    LeagueSyncResult,
+    RosterEntry,
+    WeeklyScore,
+)
 
 
 def test_fantasy_team_fields():
@@ -49,20 +56,75 @@ def test_h2h_fixture_opponent_defaults_to_none():
     assert fixture.opponent_external_id is None
 
 
-def test_league_sync_result_bundles_the_four_lists():
+def test_entry_gameweek_stat_fields():
+    stat = EntryGameweekStat(
+        team_external_id="1",
+        week=4,
+        event_transfers=2,
+        event_transfers_cost=0,
+        points_on_bench=15,
+        bank=0.2,
+        team_value=100.4,
+        overall_rank=2700348,
+        active_chip="3xc",
+    )
+    assert stat.team_external_id == "1"
+    assert stat.week == 4
+    assert stat.event_transfers == 2
+    assert stat.event_transfers_cost == 0
+    assert stat.points_on_bench == 15
+    assert stat.bank == 0.2
+    assert stat.team_value == 100.4
+    assert stat.overall_rank == 2700348
+    assert stat.active_chip == "3xc"
+
+
+def test_entry_gameweek_stat_chip_and_rank_default_to_none():
+    stat = EntryGameweekStat(
+        team_external_id="1",
+        week=4,
+        event_transfers=0,
+        event_transfers_cost=0,
+        points_on_bench=0,
+        bank=0.0,
+        team_value=100.0,
+        overall_rank=None,
+    )
+    assert stat.overall_rank is None
+    assert stat.active_chip is None
+
+
+def test_league_sync_result_bundles_the_five_lists():
     team = FantasyTeam(external_id="1", name="Team Alpha", owner_name="Max", is_mine=True)
     score = WeeklyScore(team_external_id="1", week=1, points=10.0)
     entry = RosterEntry(
         team_external_id="1", week=1, player_external_id="101", player_name="P", is_starter=True, points=5.0
     )
     fixture = H2HFixture(team_external_id="1", week=2, opponent_external_id="2")
+    stat = EntryGameweekStat(
+        team_external_id="1",
+        week=1,
+        event_transfers=1,
+        event_transfers_cost=0,
+        points_on_bench=3,
+        bank=0.5,
+        team_value=100.5,
+        overall_rank=100,
+    )
 
-    result = LeagueSyncResult(teams=[team], weekly_scores=[score], roster_players=[entry], h2h_fixtures=[fixture])
+    result = LeagueSyncResult(
+        teams=[team],
+        weekly_scores=[score],
+        roster_players=[entry],
+        h2h_fixtures=[fixture],
+        entry_gameweek_stats=[stat],
+    )
 
     assert result.teams == [team]
     assert result.weekly_scores == [score]
     assert result.roster_players == [entry]
     assert result.h2h_fixtures == [fixture]
+    assert result.entry_gameweek_stats == [stat]
 
 
 def test_league_sync_result_defaults_to_empty_lists():
@@ -71,3 +133,4 @@ def test_league_sync_result_defaults_to_empty_lists():
     assert result.weekly_scores == []
     assert result.roster_players == []
     assert result.h2h_fixtures == []
+    assert result.entry_gameweek_stats == []
