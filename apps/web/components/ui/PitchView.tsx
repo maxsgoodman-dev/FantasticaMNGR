@@ -119,7 +119,7 @@ export default function PitchView({
             const player = playerMap.get(pid);
             if (!player) return null;
             return (
-              <Slot key={`bench:${idx}`} id={`bench:${idx}`} className="min-w-[92px] flex-1 sm:flex-none">
+              <Slot key={`bench:${idx}`} id={`bench:${idx}`} className="min-w-[104px] flex-1 sm:flex-none">
                 <PlayerTile player={player} onCourt />
               </Slot>
             );
@@ -136,9 +136,9 @@ function PitchRow({ entries }: { entries: StarterSlot[] }) {
     return <div aria-hidden="true" />;
   }
   return (
-    <div className="flex items-center justify-evenly gap-2">
+    <div className="flex flex-wrap items-start justify-evenly gap-x-1 gap-y-2">
       {entries.map(({ slotId, player }) => (
-        <Slot key={slotId} id={slotId} className="w-[86px] sm:w-[96px]">
+        <Slot key={slotId} id={slotId} className="w-[104px] sm:w-[118px]">
           <PlayerTile player={player} onCourt />
         </Slot>
       ))}

@@ -345,6 +345,7 @@ class FPLAdapter(FantasySourceAdapter):
         names_by_id = {element["id"]: f"{element['first_name']} {element['second_name']}" for element in bootstrap["elements"]}
 
         pages = self._fetch_standings_pages(CLASSIC_STANDINGS_URL.format(league_id=league_id))
+        league_name = (pages[0].get("league") or {}).get("name") if pages else None
         teams, weekly_scores = _normalize_classic_standings(pages, my_entry_id, current_week)
 
         roster_players: list[RosterEntry] = []
@@ -372,7 +373,9 @@ class FPLAdapter(FantasySourceAdapter):
                 WeeklyScore(team_external_id=my_entry_id, week=week, points=float(picks["entry_history"]["points"]))
             )
 
-        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
+        return LeagueSyncResult(
+            teams=teams, weekly_scores=weekly_scores, roster_players=roster_players, league_name=league_name
+        )
 
     def _fetch_matches_pages(self, url: str) -> list[dict]:
         pages = []
@@ -393,6 +396,7 @@ class FPLAdapter(FantasySourceAdapter):
         names_by_id = {element["id"]: f"{element['first_name']} {element['second_name']}" for element in bootstrap["elements"]}
 
         standings_pages = self._fetch_standings_pages(H2H_STANDINGS_URL.format(league_id=league_id))
+        league_name = (standings_pages[0].get("league") or {}).get("name") if standings_pages else None
         teams = _normalize_h2h_teams(standings_pages, my_entry_id)
 
         matches_pages = self._fetch_matches_pages(H2H_MATCHES_URL.format(league_id=league_id))
@@ -431,4 +435,5 @@ class FPLAdapter(FantasySourceAdapter):
             roster_players=roster_players,
             h2h_fixtures=h2h_fixtures,
             entry_gameweek_stats=entry_gameweek_stats,
+            league_name=league_name,
         )

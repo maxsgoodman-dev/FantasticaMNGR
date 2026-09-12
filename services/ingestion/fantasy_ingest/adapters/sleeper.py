@@ -8,6 +8,7 @@ from fantasy_ingest.models import Player, PlayerProjection, Team
 
 PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
 STATE_URL = "https://api.sleeper.app/v1/state/nfl"
+LEAGUE_URL = "https://api.sleeper.app/v1/league/{league_id}"
 LEAGUE_USERS_URL = "https://api.sleeper.app/v1/league/{league_id}/users"
 LEAGUE_ROSTERS_URL = "https://api.sleeper.app/v1/league/{league_id}/rosters"
 LEAGUE_MATCHUPS_URL = "https://api.sleeper.app/v1/league/{league_id}/matchups/{week}"
@@ -215,6 +216,10 @@ class SleeperAdapter(FantasySourceAdapter):
     def fetch_league_data(self, league_id: str, my_user_id: str) -> LeagueSyncResult:
         names_by_id = {player.id: player.name for player in self.fetch_players()}
 
+        league_response = self._client.get(LEAGUE_URL.format(league_id=league_id))
+        league_response.raise_for_status()
+        league_name = league_response.json().get("name")
+
         users_response = self._client.get(LEAGUE_USERS_URL.format(league_id=league_id))
         users_response.raise_for_status()
         rosters_response = self._client.get(LEAGUE_ROSTERS_URL.format(league_id=league_id))
@@ -241,4 +246,6 @@ class SleeperAdapter(FantasySourceAdapter):
             weekly_scores.extend(scores)
             roster_players.extend(entries)
 
-        return LeagueSyncResult(teams=teams, weekly_scores=weekly_scores, roster_players=roster_players)
+        return LeagueSyncResult(
+            teams=teams, weekly_scores=weekly_scores, roster_players=roster_players, league_name=league_name
+        )

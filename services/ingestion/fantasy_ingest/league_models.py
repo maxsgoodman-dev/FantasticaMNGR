@@ -54,3 +54,11 @@ class LeagueSyncResult:
     roster_players: list[RosterEntry] = field(default_factory=list)
     h2h_fixtures: list[H2HFixture] = field(default_factory=list)
     entry_gameweek_stats: list[EntryGameweekStat] = field(default_factory=list)
+    # The platform's own display name for this league (e.g. Sleeper's
+    # league.name, FPL standings' league.name), when the fetch could get
+    # one. `league_config.py` only ever has the numeric external ID to
+    # build a placeholder from at job-construction time — this lets
+    # sync_league_data replace that placeholder with the real name once
+    # the fetch actually happens, without changing what league_config.py
+    # itself knows.
+    league_name: str | None = None

@@ -193,8 +193,9 @@ export function PlayerTile({
         "hover:-translate-y-0.5 hover:shadow-[0_2px_5px_rgba(0,0,0,0.1),0_12px_22px_-8px_rgba(0,0,0,0.5)]",
         "cursor-grab active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent",
         isDragging ? "opacity-40" : "opacity-100",
-        onCourt ? "w-[92px] flex-col text-center" : "w-full",
+        onCourt ? "w-[104px] flex-col text-center sm:w-[118px]" : "w-full",
       ].join(" ")}
+      title={player.playerName}
     >
       {player.position && (
         <span
@@ -206,8 +207,13 @@ export function PlayerTile({
           {player.position}
         </span>
       )}
-      <div className={onCourt ? "min-w-0" : "min-w-0 flex-1"}>
-        <div className="truncate text-xs font-semibold leading-tight text-ink-primary">
+      <div className={onCourt ? "min-w-0 w-full" : "min-w-0 flex-1"}>
+        <div
+          className={[
+            "font-semibold leading-tight text-ink-primary",
+            onCourt ? "line-clamp-2 break-words text-[11px]" : "truncate text-xs",
+          ].join(" ")}
+        >
           {player.playerName}
         </div>
         {!compact && (

@@ -4,10 +4,13 @@ import SectionHeader from "./SectionHeader";
 const SHEET_ID = "1HcQsj3aVbvlak135JK_akFxQ68hG6ioV2HRtOpr-6JM";
 const SHEET_GID = "978454946";
 
-// The publish-to-web "pubhtml" endpoint renders the live sheet with its tab
-// bar intact (all tabs stay clickable, exactly like the real Sheets UI).
-// `gid` just lands the initial view on a specific tab.
-const EMBED_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pubhtml?widget=true&headers=false&gid=${SHEET_GID}`;
+// "/pubhtml" requires the sheet to be explicitly Published to the web
+// (File > Share > Publish to web) — this sheet is only shared as "anyone
+// with the link can view", which /pubhtml rejects with "This document is
+// not published." "/preview" renders the same live, tab-switchable view
+// for any link-shared sheet without that extra publish step (confirmed
+// working directly against this sheet — see the widget's caption below).
+const EMBED_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/preview?gid=${SHEET_GID}`;
 
 const EDIT_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?gid=${SHEET_GID}#gid=${SHEET_GID}`;
 

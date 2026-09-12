@@ -292,7 +292,15 @@ def sync_league_data(
     owns_client = client is None
     client = client or _client()
     try:
-        response = client.post("/leagues?on_conflict=source_id,external_league_id", json=[_league_row(league)])
+        # `league["name"]` is only ever the placeholder league_config.py
+        # built before any fetch happened (it has nothing better — just a
+        # numeric ID). The adapter's fetch just pulled the platform's own
+        # real league name (Sleeper's league.name, FPL standings'
+        # league.name); prefer that whenever the fetch actually got one.
+        league_row_source = {**league, "name": result.league_name or league["name"]}
+        response = client.post(
+            "/leagues?on_conflict=source_id,external_league_id", json=[_league_row(league_row_source)]
+        )
         response.raise_for_status()
 
         team_rows = _fantasy_team_rows(league, result)

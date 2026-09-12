@@ -233,6 +233,8 @@ def test_fetch_league_data_pulls_teams_and_every_week_so_far():
         path = request.url.path
         if path.endswith("/players/nfl"):
             return httpx.Response(200, json=PLAYERS_FIXTURE)
+        if path.endswith("/league/L1"):
+            return httpx.Response(200, json={"name": "The League Name"})
         if path.endswith("/league/L1/users"):
             return httpx.Response(200, json=USERS_FIXTURE)
         if path.endswith("/league/L1/rosters"):
@@ -253,6 +255,7 @@ def test_fetch_league_data_pulls_teams_and_every_week_so_far():
     assert len(result.weekly_scores) == 2  # both rosters, week 1 only (week 2 empty)
     assert any(score.week == 1 and score.team_external_id == "1" for score in result.weekly_scores)
     assert any(entry.player_name == "Patrick Mahomes" for entry in result.roster_players)
+    assert result.league_name == "The League Name"
 
 
 def test_fetch_league_data_skips_a_week_whose_matchups_call_fails():
@@ -260,6 +263,8 @@ def test_fetch_league_data_skips_a_week_whose_matchups_call_fails():
         path = request.url.path
         if path.endswith("/players/nfl"):
             return httpx.Response(200, json=PLAYERS_FIXTURE)
+        if path.endswith("/league/L1"):
+            return httpx.Response(200, json={"name": "The League Name"})
         if path.endswith("/league/L1/users"):
             return httpx.Response(200, json=USERS_FIXTURE)
         if path.endswith("/league/L1/rosters"):
