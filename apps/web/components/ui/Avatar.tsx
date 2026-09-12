@@ -1,10 +1,10 @@
 const PALETTE = [
-  { bg: "bg-accent/20", text: "text-accent" },
-  { bg: "bg-series-opponent/20", text: "text-series-opponent" },
-  { bg: "bg-status-tie/20", text: "text-status-tie" },
-  { bg: "bg-violet-400/20", text: "text-violet-300" },
-  { bg: "bg-pink-400/20", text: "text-pink-300" },
-  { bg: "bg-cyan-400/20", text: "text-cyan-300" },
+  { bg: "bg-gradient-to-b from-accent/30 to-accent/10", text: "text-accent" },
+  { bg: "bg-gradient-to-b from-series-opponent/30 to-series-opponent/10", text: "text-series-opponent" },
+  { bg: "bg-gradient-to-b from-status-tie/30 to-status-tie/10", text: "text-status-tie" },
+  { bg: "bg-gradient-to-b from-violet-400/30 to-violet-400/10", text: "text-violet-300" },
+  { bg: "bg-gradient-to-b from-pink-400/30 to-pink-400/10", text: "text-pink-300" },
+  { bg: "bg-gradient-to-b from-cyan-400/30 to-cyan-400/10", text: "text-cyan-300" },
 ];
 
 function hashString(value: string): number {
@@ -29,7 +29,7 @@ export default function Avatar({ name, size = "md" }: { name: string; size?: "sm
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${dimensions} ${bg} ${text}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),inset_0_-1px_2px_0_rgba(0,0,0,0.25)] ${dimensions} ${bg} ${text}`}
     >
       {initials(name)}
     </span>

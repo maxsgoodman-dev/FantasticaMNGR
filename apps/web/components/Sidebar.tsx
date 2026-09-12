@@ -28,7 +28,7 @@ export default async function Sidebar() {
         <SidebarNav leagues={leagues} />
       )}
 
-      <div className="mt-8 border-t border-border pt-4">
+      <div className="mt-8 border-t border-border pt-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
         <PlayersNavLink />
       </div>
     </SidebarShell>

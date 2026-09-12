@@ -34,14 +34,16 @@ export default function SidebarNav({ leagues }: { leagues: League[] }) {
   return (
     <>
       {sportIds.length > 1 && (
-        <div className="mb-4 flex rounded-md border border-border bg-surface-hover p-0.5 text-xs font-medium">
+        <div className="mb-4 flex rounded-md border border-border bg-surface-sunken p-0.5 text-xs font-medium shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.4)]">
           {sportIds.map((sportId) => (
             <button
               key={sportId}
               type="button"
               onClick={() => setActiveSport(sportId)}
-              className={`flex-1 rounded px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
-                sportId === visibleSportId ? "bg-accent text-black" : "text-ink-muted hover:text-ink-primary"
+              className={`flex-1 rounded px-2 py-1.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+                sportId === visibleSportId
+                  ? "bg-accent-gradient text-black shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_1px_4px_-1px_var(--accent-glow)]"
+                  : "text-ink-muted hover:text-ink-primary"
               }`}
             >
               {SPORT_LABELS[sportId] ?? sportId}

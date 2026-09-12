@@ -7,7 +7,7 @@ export function Table({ className = "", ...props }: HTMLAttributes<HTMLTableElem
 export function Thead({ className = "", ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={`text-xs font-medium uppercase tracking-wide text-ink-muted ${className}`}
+      className={`bg-gradient-to-b from-surface-raised/60 to-transparent text-xs font-medium uppercase tracking-wide text-ink-muted ${className}`}
       {...props}
     />
   );
@@ -20,14 +20,19 @@ export function Tbody(props: HTMLAttributes<HTMLTableSectionElement>) {
 export function Tr({ className = "", ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={`border-t border-border transition-colors first:border-t-0 hover:bg-surface-hover ${className}`}
+      className={`border-t border-border transition-colors duration-150 first:border-t-0 hover:bg-gradient-to-r hover:from-surface-hover hover:to-transparent ${className}`}
       {...props}
     />
   );
 }
 
 export function Th({ className = "", ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={`border-b border-border px-4 py-2.5 font-medium ${className}`} {...props} />;
+  return (
+    <th
+      className={`border-b border-border px-4 py-2.5 font-medium shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.03)] ${className}`}
+      {...props}
+    />
+  );
 }
 
 export function Td({ className = "", ...props }: TdHTMLAttributes<HTMLTableCellElement>) {

@@ -2,7 +2,7 @@ import Card from "./Card";
 
 const TONE_CLASSES = {
   default: "text-ink-primary",
-  accent: "text-accent",
+  accent: "text-accent drop-shadow-[0_0_10px_var(--accent-glow-soft)]",
   win: "text-status-win",
   loss: "text-status-loss",
   tie: "text-status-tie",

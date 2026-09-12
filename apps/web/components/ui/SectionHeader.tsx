@@ -17,7 +17,7 @@ export default function SectionHeader({
         <h1
           className={
             size === "lg"
-              ? "text-2xl font-bold leading-tight tracking-tight text-ink-primary"
+              ? "bg-gradient-to-b from-ink-primary to-ink-primary/80 bg-clip-text text-2xl font-bold leading-tight tracking-tight text-transparent"
               : "text-lg font-semibold text-ink-primary"
           }
         >

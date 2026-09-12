@@ -19,6 +19,11 @@ import GameweekMatchupCard, {
   type WeakSpot,
 } from "@/components/ui/GameweekMatchupCard";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
+import StartingXIBoard from "@/components/ui/StartingXIBoard";
+import TransferTargetSearch, { type StartingXIPlayer } from "@/components/ui/TransferTargetSearch";
+import GoogleSheetWidget from "@/components/ui/GoogleSheetWidget";
+import FplGameweekWidget from "@/components/ui/FplGameweekWidget";
+import LiveFplTablesWidget from "@/components/ui/LiveFplTablesWidget";
 
 function formatPoints(points: number | null): string {
   return points === null ? "—" : points.toFixed(1);
@@ -336,6 +341,51 @@ export default async function LeagueTeamViewPage({
             </div>
           )}
         </Card>
+      )}
+
+      <section className="mt-10 grid gap-6 lg:grid-cols-2">
+        <StartingXIBoard teamName={myTeam.teamName} roster={buildMatchupRoster(myRoster, fplSheetData, projections, opponentRoster, week, weekState)} />
+        {opponentTeam && (
+          <StartingXIBoard
+            teamName={opponentTeam.teamName}
+            roster={buildMatchupRoster(opponentRoster, fplSheetData, projections, myRoster, week, weekState)}
+          />
+        )}
+      </section>
+
+      <section className="mt-10">
+        <SectionHeader
+          title="Transfer Targets"
+          description={`Search the ${league.sourceId.toUpperCase()} player pool and compare against your current starting XI.`}
+        />
+        <div className="mt-3">
+          <TransferTargetSearch
+            startingXI={myRoster
+              .filter((player) => player.isStarter)
+              .map(
+                (player): StartingXIPlayer => ({
+                  playerExternalId: player.playerExternalId,
+                  playerName: player.playerName,
+                  position: fplSheetData?.get(player.playerExternalId)?.position ?? "—",
+                  points: player.points,
+                  tradeValue: player.playerValue?.tradeValue ?? null,
+                })
+              )}
+            sourceId={league.sourceId}
+            sportId={league.sportId}
+          />
+        </div>
+      </section>
+
+      {league.sourceId === "fpl" && (
+        <section className="mt-10 space-y-6">
+          <SectionHeader title="External Trackers" description="Your other FPL tools, in one place." />
+          <GoogleSheetWidget />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <FplGameweekWidget />
+            <LiveFplTablesWidget />
+          </div>
+        </section>
       )}
 
       <section className="mt-10">
