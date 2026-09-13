@@ -344,11 +344,16 @@ export default async function LeagueTeamViewPage({
       )}
 
       <section className="mt-10 grid gap-6 lg:grid-cols-2">
-        <StartingXIBoard teamName={myTeam.teamName} roster={buildMatchupRoster(myRoster, fplSheetData, projections, opponentRoster, week, weekState)} />
+        <StartingXIBoard
+          teamName={myTeam.teamName}
+          roster={buildMatchupRoster(myRoster, fplSheetData, projections, opponentRoster, week, weekState)}
+          sportId={league.sportId}
+        />
         {opponentTeam && (
           <StartingXIBoard
             teamName={opponentTeam.teamName}
             roster={buildMatchupRoster(opponentRoster, fplSheetData, projections, myRoster, week, weekState)}
+            sportId={league.sportId}
           />
         )}
       </section>
@@ -356,7 +361,9 @@ export default async function LeagueTeamViewPage({
       <section className="mt-10">
         <SectionHeader
           title="Transfer Targets"
-          description={`Search the ${league.sourceId.toUpperCase()} player pool and compare against your current starting XI.`}
+          description={`Search the ${league.sourceId.toUpperCase()} player pool and compare against your current ${
+            league.sportId === "premier-league" ? "starting XI" : "starting lineup"
+          }.`}
         />
         <div className="mt-3">
           <TransferTargetSearch

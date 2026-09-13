@@ -32,13 +32,20 @@ export type LineupLayout = "table" | "pitch";
 export interface StartingXIBoardProps {
   teamName: string;
   roster: GameweekMatchupPlayerRow[];
-  /** Which view renders first; the viewer can still toggle either way. Defaults to "pitch". */
+  /** Which sport this roster belongs to — gates the soccer-pitch view, which only makes sense for "premier-league". */
+  sportId: string;
+  /** Which view renders first; the viewer can still toggle either way. Defaults to "pitch". Ignored (forced to "table") for any sport other than "premier-league". */
   defaultLayout?: LineupLayout;
 }
 
-export default function StartingXIBoard({ teamName, roster, defaultLayout = "pitch" }: StartingXIBoardProps) {
+export default function StartingXIBoard({ teamName, roster, sportId, defaultLayout = "pitch" }: StartingXIBoardProps) {
+  // The grass/pitch visual is a soccer field — showing it for NFL (or any
+  // other non-soccer sport) would be visibly wrong, not just a stylistic
+  // mismatch, so that layout mode doesn't exist at all outside FPL.
+  const supportsPitch = sportId === "premier-league";
   const { board, playerMap, handleDragEnd, totals } = useLineupBoard(roster);
-  const [layout, setLayout] = useState<LineupLayout>(defaultLayout);
+  const [layout, setLayout] = useState<LineupLayout>(supportsPitch ? defaultLayout : "table");
+  const startersLabel = supportsPitch ? "Starting XI" : "Starting Lineup";
   const [activeId, setActiveId] = useState<string | null>(null);
   // dnd-kit assigns its screen-reader "described by" ids from a mutable
   // module-level counter, not React's SSR-safe useId — with two boards
@@ -77,14 +84,14 @@ export default function StartingXIBoard({ teamName, roster, defaultLayout = "pit
         <div>
           <h3 className="text-base font-semibold text-ink-primary">{teamName}</h3>
           <p className="mt-0.5 max-w-sm text-xs text-ink-faint">
-            Drag players between the pitch and bench to try lineup ideas — a visual sandbox only, nothing here
-            saves or submits anywhere.
+            Drag players between the {supportsPitch ? "pitch" : "lineup"} and bench to try lineup ideas — a visual
+            sandbox only, nothing here saves or submits anywhere.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <TotalsBadge label="Live pts" value={totals.points} />
           <TotalsBadge label="Projected" value={totals.projectedPoints} />
-          <LayoutToggle layout={layout} onChange={setLayout} />
+          {supportsPitch && <LayoutToggle layout={layout} onChange={setLayout} />}
         </div>
       </div>
 
@@ -96,17 +103,17 @@ export default function StartingXIBoard({ teamName, roster, defaultLayout = "pit
           onDragEnd={onDragEnd}
           onDragCancel={onDragCancel}
         >
-          {layout === "pitch" ? (
+          {layout === "pitch" && supportsPitch ? (
             <PitchView board={board} playerMap={playerMap} />
           ) : (
-            <TableLayout board={board} playerMap={playerMap} />
+            <TableLayout board={board} playerMap={playerMap} startersLabel={startersLabel} />
           )}
           <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" }}>
             {activePlayer ? <PlayerTile player={activePlayer} onCourt /> : null}
           </DragOverlay>
         </DndContext>
       ) : (
-        <StaticSkeleton board={board} playerMap={playerMap} />
+        <StaticSkeleton board={board} playerMap={playerMap} startersLabel={startersLabel} />
       )}
     </div>
   );
@@ -147,7 +154,15 @@ function LayoutToggle({ layout, onChange }: { layout: LineupLayout; onChange: (l
 // paint has zero dependency on dnd-kit's id-generation, which is what
 // caused the hydration mismatch this is working around. Swapped for the
 // real interactive board immediately after mount.
-function StaticSkeleton({ board, playerMap }: { board: LineupBoardState; playerMap: PlayerMap }) {
+function StaticSkeleton({
+  board,
+  playerMap,
+  startersLabel,
+}: {
+  board: LineupBoardState;
+  playerMap: PlayerMap;
+  startersLabel: string;
+}) {
   const row = (pid: string) => {
     const player = playerMap.get(pid);
     if (!player) return null;
@@ -168,7 +183,7 @@ function StaticSkeleton({ board, playerMap }: { board: LineupBoardState; playerM
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
-        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Starting XI</div>
+        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{startersLabel}</div>
         <div className="space-y-1.5">{board.starters.map(row)}</div>
       </div>
       <div>
@@ -179,11 +194,19 @@ function StaticSkeleton({ board, playerMap }: { board: LineupBoardState; playerM
   );
 }
 
-function TableLayout({ board, playerMap }: { board: LineupBoardState; playerMap: PlayerMap }) {
+function TableLayout({
+  board,
+  playerMap,
+  startersLabel,
+}: {
+  board: LineupBoardState;
+  playerMap: PlayerMap;
+  startersLabel: string;
+}) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
-        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Starting XI</div>
+        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{startersLabel}</div>
         <div className="space-y-1.5">
           {board.starters.map((pid, idx) => {
             const player = playerMap.get(pid);

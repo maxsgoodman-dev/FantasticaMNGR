@@ -85,6 +85,10 @@ export default function TransferTargetSearch({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [state, setState] = useState<FetchState>({ status: "idle" });
   const [selected, setSelected] = useState<WarehousePlayer | null>(null);
+  // "XI" is a soccer term (eleven starters) — wrong for NFL's roster, so
+  // the label shown to the viewer is sport-aware even though the prop
+  // and internal naming stay `startingXI` for brevity.
+  const lineupLabel = sportId === "premier-league" ? "starting XI" : "starting lineup";
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(query.trim()), debounceMs);
@@ -215,14 +219,14 @@ export default function TransferTargetSearch({
 
           {comparablePlayers.length === 0 ? (
             <p className="mt-3 text-sm text-ink-faint">
-              No starting-XI player in the same position ({selected.position ?? "unknown"}) to compare against.
+              No {lineupLabel} player in the same position ({selected.position ?? "unknown"}) to compare against.
             </p>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <Table>
                 <Thead>
                   <Tr>
-                    <Th>Starting XI player</Th>
+                    <Th className="capitalize">{lineupLabel} player</Th>
                     <Th>Points</Th>
                     <Th>Trade value</Th>
                     <Th>{selected.name} price</Th>
